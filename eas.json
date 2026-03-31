@@ -6,10 +6,20 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://djtszdpneuuhqlrzheux.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqdHN6ZHBuZXV1aHFscnpoZXV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1MTk0MTYsImV4cCI6MjA5MDA5NTQxNn0.rvfFRrdw0ydHLEBv75Lqfryed5y5WxizCvkWz3Il1NE",
+        "EXPO_PUBLIC_APP_ENV": "production"
+      }
     },
     "production": {
-      "distribution": "store"
+      "distribution": "store",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://djtszdpneuuhqlrzheux.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqdHN6ZHBuZXV1aHFscnpoZXV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1MTk0MTYsImV4cCI6MjA5MDA5NTQxNn0.rvfFRrdw0ydHLEBv75Lqfryed5y5WxizCvkWz3Il1NE",
+        "EXPO_PUBLIC_APP_ENV": "production"
+      }
     }
   },
   "submit": {
