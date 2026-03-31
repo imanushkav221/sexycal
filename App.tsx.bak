@@ -1,0 +1,49 @@
+import "react-native-url-polyfill/auto";
+import React, { useEffect, useState } from "react";
+import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import AppNavigator from "@/navigation/AppNavigator";
+import { getDb } from "@/db/migrate";
+import { runSync } from "@/sync/syncWorker";
+
+export default function App() {
+  const [dbReady, setDbReady] = useState(false);
+
+  useEffect(() => {
+    // Initialize the database on startup
+    getDb()
+      .then(() => {
+        setDbReady(true);
+        // Kick off background sync after DB is ready
+        runSync().catch(console.error);
+      })
+      .catch((err) => {
+        console.error("[App] Failed to initialize DB:", err);
+        // Still mark ready so user can see error state
+        setDbReady(true);
+      });
+  }, []);
+
+  if (!dbReady) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2563EB" />
+      </View>
+    );
+  }
+
+  return (
+    <SafeAreaProvider>
+      <AppNavigator />
+    </SafeAreaProvider>
+  );
+}
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+  },
+});
