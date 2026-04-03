@@ -36,7 +36,9 @@ class AppDetectorService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannels()
-        startForeground(FOREGROUND_ID, buildForegroundNotif())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForeground(FOREGROUND_ID, buildForegroundNotif())
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
