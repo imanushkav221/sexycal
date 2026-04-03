@@ -19,14 +19,33 @@ class AppDetectorModule : Module() {
 
         Function("openPermissionSettings") {
             val context = appContext.reactContext ?: return@Function
-            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            try {
+                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                // Fallback: open general app settings
+                try {
+                    val intent = Intent(Settings.ACTION_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                } catch (_: Exception) {}
             }
-            context.startActivity(intent)
         }
 
         Function("startWatching") { targetPackages: List<String>, mealWindowStrings: List<String> ->
             val context = appContext.reactContext ?: return@Function
+
+            // Save to SharedPreferences so BootReceiver can restart the service
+            val prefs = context.getSharedPreferences("sexycal_app_detector", Context.MODE_PRIVATE)
+            prefs.edit()
+                .putStringSet("targetPackages", targetPackages.toSet())
+                .putStringSet("mealWindows", mealWindowStrings.toSet())
+                .putBoolean("enabled", true)
+                .apply()
+
             val intent = Intent(context, AppDetectorService::class.java).apply {
                 putStringArrayListExtra("targetPackages", ArrayList(targetPackages))
                 putStringArrayListExtra("mealWindows", ArrayList(mealWindowStrings))
@@ -36,6 +55,11 @@ class AppDetectorModule : Module() {
 
         Function("stopWatching") {
             val context = appContext.reactContext ?: return@Function
+
+            // Clear saved state so boot receiver doesn't restart
+            val prefs = context.getSharedPreferences("sexycal_app_detector", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("enabled", false).apply()
+
             context.stopService(Intent(context, AppDetectorService::class.java))
         }
     }

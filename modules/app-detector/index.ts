@@ -1,4 +1,4 @@
-import { Platform } from "react-native";
+import { Platform, Linking } from "react-native";
 import { requireNativeModule } from "expo-modules-core";
 
 // Android package names for each app ID
@@ -15,8 +15,8 @@ let Native: any = null;
 if (Platform.OS === "android") {
   try {
     Native = requireNativeModule("AppDetector");
-  } catch {
-    // Will be null until native build
+  } catch (e) {
+    console.warn("[AppDetector] Native module not available:", e);
   }
 }
 
@@ -25,7 +25,21 @@ export function hasUsagePermission(): boolean {
 }
 
 export function openPermissionSettings(): void {
-  Native?.openPermissionSettings();
+  if (Native) {
+    try {
+      Native.openPermissionSettings();
+    } catch {
+      // Fallback if native call fails
+      Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS").catch(() => {
+        Linking.openSettings();
+      });
+    }
+  } else {
+    // No native module — try intent directly
+    Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS").catch(() => {
+      Linking.openSettings();
+    });
+  }
 }
 
 export function startWatching(

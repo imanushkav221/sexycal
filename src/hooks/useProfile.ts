@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "./useAuth";
 import { getProfile, upsertProfile, upsertProfileFromRemote } from "@/db/profiles";
+import { getDb } from "@/db/migrate";
 import { supabase } from "@/lib/supabase";
 import type { Profile } from "@/db/profiles";
 
@@ -47,6 +48,12 @@ export function useProfile() {
             synced_at: data.updated_at,
           };
           await upsertProfileFromRemote(remoteProfile);
+          // Force onboarding_complete=1 in case timestamp guard skipped the upsert
+          const db = await getDb();
+          await db.runAsync(
+            "UPDATE profiles SET onboarding_complete = 1 WHERE user_id = ? AND onboarding_complete = 0",
+            [user.id]
+          );
           p = await getProfile(user.id);
         }
       }

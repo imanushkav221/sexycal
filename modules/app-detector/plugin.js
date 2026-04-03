@@ -5,7 +5,7 @@ function withAppDetector(config) {
     const manifest = config.modResults;
     const app = manifest.manifest.application[0];
 
-    // Register the service
+    // Register the foreground service
     if (!app.service) app.service = [];
     const serviceExists = app.service.some(
       (s) => s.$["android:name"] === "expo.modules.appdetector.AppDetectorService"
@@ -19,19 +19,38 @@ function withAppDetector(config) {
       });
     }
 
-    // FOREGROUND_SERVICE permission (needed to call startForeground)
-    if (!manifest.manifest["uses-permission"]) manifest.manifest["uses-permission"] = [];
-    const fgExists = manifest.manifest["uses-permission"].some(
-      (p) => p.$["android:name"] === "android.permission.FOREGROUND_SERVICE"
+    // Register the boot receiver — auto-starts service after reboot
+    if (!app.receiver) app.receiver = [];
+    const receiverExists = app.receiver.some(
+      (r) => r.$["android:name"] === "expo.modules.appdetector.BootReceiver"
     );
-    if (!fgExists) {
-      manifest.manifest["uses-permission"].push({
-        $: { "android:name": "android.permission.FOREGROUND_SERVICE" },
+    if (!receiverExists) {
+      app.receiver.push({
+        $: {
+          "android:name": "expo.modules.appdetector.BootReceiver",
+          "android:exported": "false",
+        },
+        "intent-filter": [
+          {
+            action: [{ $: { "android:name": "android.intent.action.BOOT_COMPLETED" } }],
+          },
+        ],
       });
     }
 
-    // PACKAGE_USAGE_STATS — user grants this manually in Settings, no manifest entry needed
-    // (removed to avoid any parsing issues on older Android versions)
+    // Permissions
+    if (!manifest.manifest["uses-permission"]) manifest.manifest["uses-permission"] = [];
+    const addPermission = (name) => {
+      const exists = manifest.manifest["uses-permission"].some(
+        (p) => p.$["android:name"] === name
+      );
+      if (!exists) {
+        manifest.manifest["uses-permission"].push({ $: { "android:name": name } });
+      }
+    };
+
+    addPermission("android.permission.FOREGROUND_SERVICE");
+    addPermission("android.permission.RECEIVE_BOOT_COMPLETED");
 
     return config;
   });
