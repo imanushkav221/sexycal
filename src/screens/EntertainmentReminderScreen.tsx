@@ -89,8 +89,8 @@ export default function EntertainmentReminderScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Smart Reminders</Text>
         <Text style={styles.subtitle}>
-          Get a quick nudge to snap your food when you switch away during a meal window.
-          Tap the notification to open the camera and log instantly.
+          Get a nudge to log your food whenever you leave SexyCAL during a meal window.
+          Fires 5 seconds after you switch away — tap to log instantly.
         </Text>
 
         {/* Global Toggle */}
@@ -200,9 +200,7 @@ export default function EntertainmentReminderScreen() {
         {/* Info */}
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>
-            💡 When you switch away during a meal window, a reminder fires in ~10
-            seconds so you can snap a photo of your food right away. Returning to
-            the app cancels it automatically.
+            💡 A reminder fires 5 seconds after you leave SexyCAL during a meal window. The app name shown is just a random one from your list — we can't detect which app you opened. Come back to SexyCAL to cancel it.
           </Text>
         </View>
       </ScrollView>
