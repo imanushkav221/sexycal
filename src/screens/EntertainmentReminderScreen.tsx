@@ -8,8 +8,10 @@ import {
   ScrollView,
   Alert,
   AppState,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as IntentLauncher from "expo-intent-launcher";
 import { setupNotifications } from "@/lib/notifications";
 import {
   ENTERTAINMENT_APPS,
@@ -19,11 +21,24 @@ import {
 } from "@/lib/entertainmentReminder";
 import {
   hasUsagePermission,
-  openPermissionSettings,
   startWatching,
   stopWatching,
 } from "app-detector";
 import { DEFAULT_MEAL_WINDOWS } from "@/utils/mealTime";
+
+/** Open Android's Usage Access settings page reliably */
+function openUsageAccessSettings() {
+  // Try expo-intent-launcher first (most reliable)
+  IntentLauncher.startActivityAsync(
+    IntentLauncher.ActivityAction.USAGE_ACCESS_SETTINGS
+  ).catch(() => {
+    // Fallback: React Native Linking intent
+    Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS").catch(() => {
+      // Last resort: general app settings
+      Linking.openSettings();
+    });
+  });
+}
 
 export default function EntertainmentReminderScreen() {
   const [settings, setSettings] = useState<EntertainmentSettings>({
@@ -63,7 +78,7 @@ export default function EntertainmentReminderScreen() {
           'To detect which app you\'re using, tap "Open Settings", find SexyCAL in the list, and turn it on.',
           [
             { text: "Cancel", style: "cancel" },
-            { text: "Open Settings", onPress: openPermissionSettings },
+            { text: "Open Settings", onPress: openUsageAccessSettings },
           ]
         );
         return;
@@ -116,13 +131,12 @@ export default function EntertainmentReminderScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Smart Reminders</Text>
         <Text style={styles.subtitle}>
-          Open SexyCAL before eating, then switch to Netflix or YouTube.
-          We detect the switch and nudge you to log your food in 5 seconds — while it's right in front of you.
+          Get nudged to log your food whenever you open Netflix, YouTube, etc. during meal times — no need to open SexyCAL first.
         </Text>
 
         {/* Permission banner */}
         {!hasPermission && (
-          <TouchableOpacity style={styles.permBanner} onPress={openPermissionSettings}>
+          <TouchableOpacity style={styles.permBanner} onPress={openUsageAccessSettings}>
             <Text style={styles.permBannerTitle}>⚠️ Usage Access Required</Text>
             <Text style={styles.permBannerDesc}>
               Tap here → find SexyCAL → turn it on. Required to detect when you open Netflix, YouTube, etc.
@@ -221,7 +235,7 @@ export default function EntertainmentReminderScreen() {
 
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>
-            💡 Flow: open SexyCAL → sit down to eat → switch to your show → notification fires in 5s → tap to snap your food. The service runs quietly in the background with a minimal notification.
+            💡 One-time setup: grant permission above, pick your apps, enable reminders. After that, the service runs automatically in the background — even after phone restart. Just open Netflix and you'll get nudged to log your food.
           </Text>
         </View>
       </ScrollView>

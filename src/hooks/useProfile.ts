@@ -3,7 +3,10 @@ import { useAuth } from "./useAuth";
 import { getProfile, upsertProfile, upsertProfileFromRemote } from "@/db/profiles";
 import { getDb } from "@/db/migrate";
 import { supabase } from "@/lib/supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Profile } from "@/db/profiles";
+
+const ONBOARDING_FLAG = "@sexycal_onboarding_complete";
 
 export function useProfile() {
   const { user } = useAuth();
@@ -15,18 +18,25 @@ export function useProfile() {
       setLoading(false);
       return;
     }
+
+    // Always show spinner while loading profile
+    setLoading(true);
+
     try {
       let p = await getProfile(user.id);
 
       // On a fresh install, SQLite is empty — pull from Supabase before rendering
       if (!p || p.onboarding_complete === 0) {
+        // Quick check: did we already complete onboarding on this device?
+        const flag = await AsyncStorage.getItem(ONBOARDING_FLAG);
+
         const { data } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", user.id)
           .single();
+
         if (data && data.onboarding_complete === 1) {
-          // Map Supabase schema (id = auth user id) back to local schema
           const remoteProfile: Profile = {
             id: data.id,
             user_id: data.id,
@@ -54,8 +64,20 @@ export function useProfile() {
             "UPDATE profiles SET onboarding_complete = 1 WHERE user_id = ? AND onboarding_complete = 0",
             [user.id]
           );
+          await AsyncStorage.setItem(ONBOARDING_FLAG, "1");
+          p = await getProfile(user.id);
+        } else if (flag === "1" && p) {
+          // Supabase failed but we know onboarding was completed before
+          const db = await getDb();
+          await db.runAsync(
+            "UPDATE profiles SET onboarding_complete = 1 WHERE user_id = ?",
+            [user.id]
+          );
           p = await getProfile(user.id);
         }
+      } else {
+        // Profile exists with onboarding_complete=1, ensure flag is set
+        await AsyncStorage.setItem(ONBOARDING_FLAG, "1");
       }
 
       setProfile(p);
@@ -79,6 +101,10 @@ export function useProfile() {
       if (!user) return;
       const updated = await upsertProfile(user.id, data);
       setProfile(updated);
+      // If onboarding was just completed, persist the flag
+      if (data.onboarding_complete === 1) {
+        await AsyncStorage.setItem(ONBOARDING_FLAG, "1");
+      }
       return updated;
     },
     [user]
