@@ -60,6 +60,7 @@ export default function LogMealScreen() {
   );
   const [quantityText, setQuantityText] = useState(String(servingSizeG));
   const [saving, setSaving] = useState(false);
+  const [logged, setLogged] = useState(false);
 
   const quantity = parseFloat(quantityText) || 0;
 
@@ -106,7 +107,8 @@ export default function LogMealScreen() {
       }
 
       await addMealItem(meal.id, resolvedFoodId, quantity, computed);
-      navigation.goBack();
+      setLogged(true);
+      setTimeout(() => navigation.goBack(), 900);
     } catch (err) {
       console.error("[LogMealScreen] Save error:", err);
       Alert.alert("Error", "Failed to log meal item. Please try again.");
@@ -202,11 +204,13 @@ export default function LogMealScreen() {
 
           {/* Save Button */}
           <TouchableOpacity
-            style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+            style={[styles.saveBtn, (saving || logged) && styles.saveBtnDisabled, logged && styles.saveBtnLogged]}
             onPress={handleSave}
-            disabled={saving}
+            disabled={saving || logged}
           >
-            {saving ? (
+            {logged ? (
+              <Text style={styles.saveBtnText}>✓ Logged!</Text>
+            ) : saving ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.saveBtnText}>Log Food</Text>
@@ -216,9 +220,9 @@ export default function LogMealScreen() {
           <TouchableOpacity
             style={styles.cancelBtn}
             onPress={() => navigation.goBack()}
-            disabled={saving}
+            disabled={saving || logged}
           >
-            <Text style={styles.cancelBtnText}>Cancel</Text>
+            <Text style={styles.cancelBtnText}>Go Back</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -334,6 +338,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   saveBtnDisabled: { opacity: 0.6 },
+  saveBtnLogged: { backgroundColor: "#16A34A", opacity: 1 },
   saveBtnText: {
     color: "#FFFFFF",
     fontSize: 16,

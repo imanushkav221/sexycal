@@ -5,8 +5,7 @@ import { Platform } from "react-native";
 import { getActiveMealWindow } from "@/utils/mealTime";
 
 const SETTINGS_KEY = "@entertainment_reminder_settings";
-const LAST_REMINDER_KEY = "@last_entertainment_reminder";
-const REMINDER_DELAY_SECONDS = 10; // 10 seconds — fires almost immediately when switching away
+const REMINDER_DELAY_SECONDS = 5; // 5 seconds — fires almost immediately when switching away
 
 export interface EntertainmentApp {
   id: string;
@@ -18,9 +17,7 @@ export const ENTERTAINMENT_APPS: EntertainmentApp[] = [
   { id: "youtube", name: "YouTube", icon: "📺" },
   { id: "netflix", name: "Netflix", icon: "🎬" },
   { id: "prime", name: "Prime Video", icon: "🎥" },
-  { id: "hotstar", name: "Hotstar", icon: "⭐" },
-  { id: "jiocinema", name: "JioCinema", icon: "🎞️" },
-  { id: "disney", name: "Disney+", icon: "🏰" },
+  { id: "jiohotstar", name: "JioHotstar", icon: "⭐" },
   { id: "spotify", name: "Spotify", icon: "🎵" },
   { id: "instagram", name: "Instagram", icon: "📷" },
 ];
@@ -70,13 +67,7 @@ async function handleAppStateChange(nextState: AppStateStatus): Promise<void> {
       const mealWindow = getActiveMealWindow();
       if (!mealWindow) return;
 
-      // Don't remind twice for the same meal window today
-      const lastReminder = await AsyncStorage.getItem(LAST_REMINDER_KEY);
-      const today = new Date().toISOString().split("T")[0];
-      const reminderKey = `${today}-${mealWindow.mealType}`;
-      if (lastReminder === reminderKey) return;
-
-      // Cancel any previously pending notification
+      // Cancel any previously pending notification before scheduling a new one
       if (pendingNotificationId) {
         await Notifications.cancelScheduledNotificationAsync(pendingNotificationId).catch(() => {});
         pendingNotificationId = null;
@@ -101,8 +92,6 @@ async function handleAppStateChange(nextState: AppStateStatus): Promise<void> {
           seconds: REMINDER_DELAY_SECONDS,
         },
       });
-
-      await AsyncStorage.setItem(LAST_REMINDER_KEY, reminderKey);
     } else if (nextState === "active") {
       // App came back to foreground — cancel any pending reminder
       if (pendingNotificationId) {
