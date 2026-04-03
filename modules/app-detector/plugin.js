@@ -5,7 +5,7 @@ function withAppDetector(config) {
     const manifest = config.modResults;
     const app = manifest.manifest.application[0];
 
-    // --- Service (no foregroundServiceType — avoids API 34 requirement) ---
+    // Register the service
     if (!app.service) app.service = [];
     const serviceExists = app.service.some(
       (s) => s.$["android:name"] === "expo.modules.appdetector.AppDetectorService"
@@ -15,25 +15,23 @@ function withAppDetector(config) {
         $: {
           "android:name": "expo.modules.appdetector.AppDetectorService",
           "android:exported": "false",
-          "android:stopWithTask": "false",
         },
       });
     }
 
-    // --- Permissions (no FOREGROUND_SERVICE_DATA_SYNC — requires API 34) ---
+    // FOREGROUND_SERVICE permission (needed to call startForeground)
     if (!manifest.manifest["uses-permission"]) manifest.manifest["uses-permission"] = [];
-    const perms = [
-      "android.permission.PACKAGE_USAGE_STATS",
-      "android.permission.FOREGROUND_SERVICE",
-    ];
-    perms.forEach((perm) => {
-      const exists = manifest.manifest["uses-permission"].some(
-        (p) => p.$["android:name"] === perm
-      );
-      if (!exists) {
-        manifest.manifest["uses-permission"].push({ $: { "android:name": perm } });
-      }
-    });
+    const fgExists = manifest.manifest["uses-permission"].some(
+      (p) => p.$["android:name"] === "android.permission.FOREGROUND_SERVICE"
+    );
+    if (!fgExists) {
+      manifest.manifest["uses-permission"].push({
+        $: { "android:name": "android.permission.FOREGROUND_SERVICE" },
+      });
+    }
+
+    // PACKAGE_USAGE_STATS — user grants this manually in Settings, no manifest entry needed
+    // (removed to avoid any parsing issues on older Android versions)
 
     return config;
   });
