@@ -19,23 +19,25 @@ export const ENTERTAINMENT_APPS: EntertainmentApp[] = [
   { id: "instagram", name: "Instagram", icon: "📷" },
 ];
 
-export interface MealReminder {
+export interface MealReminderTime {
   mealType: "breakfast" | "lunch" | "dinner";
   label: string;
-  defaultHour: number;
-  defaultMinute: number;
+  icon: string;
+  enabled: boolean;
+  hour: number;
+  minute: number;
 }
 
-export const MEAL_REMINDERS: MealReminder[] = [
-  { mealType: "breakfast", label: "Breakfast", defaultHour: 8, defaultMinute: 30 },
-  { mealType: "lunch", label: "Lunch", defaultHour: 13, defaultMinute: 0 },
-  { mealType: "dinner", label: "Dinner", defaultHour: 20, defaultMinute: 0 },
+export const DEFAULT_MEAL_TIMES: MealReminderTime[] = [
+  { mealType: "breakfast", label: "Breakfast", icon: "🍳", enabled: false, hour: 8, minute: 30 },
+  { mealType: "lunch", label: "Lunch", icon: "🥗", enabled: false, hour: 13, minute: 0 },
+  { mealType: "dinner", label: "Dinner", icon: "🍽️", enabled: false, hour: 20, minute: 0 },
 ];
 
 export interface EntertainmentSettings {
   enabled: boolean;
   selectedApps: string[];
-  enabledMeals: string[]; // mealTypes that have reminders on
+  mealTimes: MealReminderTime[];
   dailySummaryEnabled: boolean;
   dailySummaryHour: number;
 }
@@ -43,7 +45,7 @@ export interface EntertainmentSettings {
 const DEFAULT_SETTINGS: EntertainmentSettings = {
   enabled: false,
   selectedApps: [],
-  enabledMeals: ["breakfast", "lunch", "dinner"],
+  mealTimes: DEFAULT_MEAL_TIMES,
   dailySummaryEnabled: true,
   dailySummaryHour: 21,
 };
@@ -52,7 +54,12 @@ export async function getEntertainmentSettings(): Promise<EntertainmentSettings>
   try {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    // Migrate old settings that don't have mealTimes
+    if (!parsed.mealTimes) {
+      parsed.mealTimes = DEFAULT_MEAL_TIMES;
+    }
+    return { ...DEFAULT_SETTINGS, ...parsed };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -64,7 +71,6 @@ export async function saveEntertainmentSettings(
   await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
-// Cancel all scheduled meal reminders
 async function cancelMealReminders(): Promise<void> {
   const all = await Notifications.getAllScheduledNotificationsAsync();
   for (const n of all) {
@@ -74,18 +80,16 @@ async function cancelMealReminders(): Promise<void> {
   }
 }
 
-// Schedule daily notifications at each enabled meal time
 export async function scheduleMealReminders(settings: EntertainmentSettings): Promise<void> {
   await cancelMealReminders();
-
-  if (!settings.enabled || settings.enabledMeals.length === 0) return;
+  if (!settings.enabled) return;
 
   const appNames = ENTERTAINMENT_APPS
     .filter((a) => settings.selectedApps.includes(a.id))
     .map((a) => a.name);
 
-  for (const meal of MEAL_REMINDERS) {
-    if (!settings.enabledMeals.includes(meal.mealType)) continue;
+  for (const meal of settings.mealTimes) {
+    if (!meal.enabled) continue;
 
     const appHint = appNames.length > 0
       ? `Watching ${appNames[Math.floor(Math.random() * appNames.length)]}? `
@@ -93,15 +97,15 @@ export async function scheduleMealReminders(settings: EntertainmentSettings): Pr
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: `Time to log your ${meal.label.toLowerCase()}! 🍽️`,
+        title: `${meal.icon} Time to log your ${meal.label.toLowerCase()}!`,
         body: `${appHint}Snap a photo of your food to log it instantly.`,
         data: { type: "meal-reminder", screen: "FoodPhoto", mealType: meal.mealType },
         ...(Platform.OS === "android" && { channelId: "meal-reminders" }),
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour: meal.defaultHour,
-        minute: meal.defaultMinute,
+        hour: meal.hour,
+        minute: meal.minute,
       },
     });
   }
