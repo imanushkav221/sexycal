@@ -16,7 +16,7 @@ import {
   saveEntertainmentSettings,
   scheduleMealReminders,
   type EntertainmentSettings,
-  type MealReminderTime,
+  type MealDeadline,
 } from "@/lib/entertainmentReminder";
 
 function formatTime(hour: number, minute: number): string {
@@ -31,47 +31,44 @@ function TimeAdjuster({
   disabled,
   onChange,
 }: {
-  meal: MealReminderTime;
+  meal: MealDeadline;
   disabled: boolean;
   onChange: (hour: number, minute: number) => void;
 }) {
-  const adjustHour = (delta: number) => {
-    const newHour = (meal.hour + delta + 24) % 24;
-    onChange(newHour, meal.minute);
-  };
+  const adjustHour = (delta: number) => onChange((meal.deadlineHour + delta + 24) % 24, meal.deadlineMinute);
   const adjustMinute = (delta: number) => {
-    let newMin = meal.minute + delta;
-    if (newMin < 0) newMin = 45;
-    if (newMin >= 60) newMin = 0;
-    onChange(meal.hour, newMin);
+    let m = meal.deadlineMinute + delta;
+    if (m < 0) m = 45;
+    if (m >= 60) m = 0;
+    onChange(meal.deadlineHour, m);
   };
 
   return (
-    <View style={[timeStyles.container, disabled && timeStyles.disabled]}>
-      <View style={timeStyles.unit}>
-        <TouchableOpacity onPress={() => adjustHour(1)} disabled={disabled} style={timeStyles.btn}>
-          <Text style={timeStyles.arrow}>▲</Text>
+    <View style={[ts.container, disabled && ts.disabled]}>
+      <View style={ts.unit}>
+        <TouchableOpacity onPress={() => adjustHour(1)} disabled={disabled} style={ts.btn}>
+          <Text style={ts.arrow}>▲</Text>
         </TouchableOpacity>
-        <Text style={timeStyles.value}>{String(meal.hour).padStart(2, "0")}</Text>
-        <TouchableOpacity onPress={() => adjustHour(-1)} disabled={disabled} style={timeStyles.btn}>
-          <Text style={timeStyles.arrow}>▼</Text>
+        <Text style={ts.value}>{String(meal.deadlineHour).padStart(2, "0")}</Text>
+        <TouchableOpacity onPress={() => adjustHour(-1)} disabled={disabled} style={ts.btn}>
+          <Text style={ts.arrow}>▼</Text>
         </TouchableOpacity>
       </View>
-      <Text style={timeStyles.colon}>:</Text>
-      <View style={timeStyles.unit}>
-        <TouchableOpacity onPress={() => adjustMinute(15)} disabled={disabled} style={timeStyles.btn}>
-          <Text style={timeStyles.arrow}>▲</Text>
+      <Text style={ts.colon}>:</Text>
+      <View style={ts.unit}>
+        <TouchableOpacity onPress={() => adjustMinute(15)} disabled={disabled} style={ts.btn}>
+          <Text style={ts.arrow}>▲</Text>
         </TouchableOpacity>
-        <Text style={timeStyles.value}>{String(meal.minute).padStart(2, "0")}</Text>
-        <TouchableOpacity onPress={() => adjustMinute(-15)} disabled={disabled} style={timeStyles.btn}>
-          <Text style={timeStyles.arrow}>▼</Text>
+        <Text style={ts.value}>{String(meal.deadlineMinute).padStart(2, "0")}</Text>
+        <TouchableOpacity onPress={() => adjustMinute(-15)} disabled={disabled} style={ts.btn}>
+          <Text style={ts.arrow}>▼</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 }
 
-const timeStyles = StyleSheet.create({
+const ts = StyleSheet.create({
   container: { flexDirection: "row", alignItems: "center" },
   disabled: { opacity: 0.4 },
   unit: { alignItems: "center", width: 36 },
@@ -109,17 +106,17 @@ export default function EntertainmentReminderScreen() {
   };
 
   const toggleMeal = async (mealType: string) => {
-    const mealTimes = settings.mealTimes.map((m) =>
+    const mealDeadlines = settings.mealDeadlines.map((m) =>
       m.mealType === mealType ? { ...m, enabled: !m.enabled } : m
     );
-    await save({ ...settings, mealTimes });
+    await save({ ...settings, mealDeadlines });
   };
 
-  const updateMealTime = async (mealType: string, hour: number, minute: number) => {
-    const mealTimes = settings.mealTimes.map((m) =>
-      m.mealType === mealType ? { ...m, hour, minute } : m
+  const updateDeadline = async (mealType: string, hour: number, minute: number) => {
+    const mealDeadlines = settings.mealDeadlines.map((m) =>
+      m.mealType === mealType ? { ...m, deadlineHour: hour, deadlineMinute: minute } : m
     );
-    await save({ ...settings, mealTimes });
+    await save({ ...settings, mealDeadlines });
   };
 
   const toggleApp = async (appId: string) => {
@@ -157,15 +154,14 @@ export default function EntertainmentReminderScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Meal Reminders</Text>
         <Text style={styles.subtitle}>
-          Set your usual meal times and get reminded to log your food every day — no matter what app you're in.
+          Set a deadline for each meal. If you haven't logged it by then, you'll get a nudge — regardless of when you actually ate.
         </Text>
 
-        {/* Global Toggle */}
         <View style={styles.card}>
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.toggleLabel}>Enable Meal Reminders</Text>
-              <Text style={styles.toggleDesc}>Daily notifications at your chosen times</Text>
+              <Text style={styles.toggleDesc}>Reminds you if you forget to log</Text>
             </View>
             <Switch
               value={settings.enabled}
@@ -176,13 +172,12 @@ export default function EntertainmentReminderScreen() {
           </View>
         </View>
 
-        {/* Meal Times */}
-        <Text style={styles.sectionTitle}>Your Meal Times</Text>
+        <Text style={styles.sectionTitle}>Remind me if not logged by...</Text>
         <Text style={styles.sectionDesc}>
-          Set when you usually eat each meal. Toggle on the ones you want reminders for.
+          Set a cutoff time. If you ate at 12 or 2pm — doesn't matter. You'll only be reminded if you forgot.
         </Text>
         <View style={styles.card}>
-          {settings.mealTimes.map((meal, i) => (
+          {settings.mealDeadlines.map((meal, i) => (
             <React.Fragment key={meal.mealType}>
               <View style={styles.mealRow}>
                 <TouchableOpacity
@@ -190,36 +185,31 @@ export default function EntertainmentReminderScreen() {
                   disabled={!settings.enabled}
                   style={styles.mealLeft}
                 >
-                  <View style={[
-                    styles.checkbox,
-                    meal.enabled && styles.checkboxActive,
-                    !settings.enabled && styles.dimmed,
-                  ]}>
+                  <View style={[styles.checkbox, meal.enabled && styles.checkboxActive, !settings.enabled && styles.dimmed]}>
                     {meal.enabled && <Text style={styles.checkmark}>✓</Text>}
                   </View>
                   <View>
                     <Text style={[styles.mealLabel, !settings.enabled && styles.dimmed]}>
                       {meal.icon} {meal.label}
                     </Text>
-                    <Text style={styles.mealTime}>{formatTime(meal.hour, meal.minute)}</Text>
+                    <Text style={styles.deadlineHint}>
+                      nudge at {formatTime(meal.deadlineHour, meal.deadlineMinute)}
+                    </Text>
                   </View>
                 </TouchableOpacity>
                 <TimeAdjuster
                   meal={meal}
                   disabled={!settings.enabled || !meal.enabled}
-                  onChange={(h, m) => updateMealTime(meal.mealType, h, m)}
+                  onChange={(h, m) => updateDeadline(meal.mealType, h, m)}
                 />
               </View>
-              {i < settings.mealTimes.length - 1 && <View style={styles.divider} />}
+              {i < settings.mealDeadlines.length - 1 && <View style={styles.divider} />}
             </React.Fragment>
           ))}
         </View>
 
-        {/* Apps */}
         <Text style={styles.sectionTitle}>Your Apps (optional)</Text>
-        <Text style={styles.sectionDesc}>
-          We'll mention these in the notification text to make it feel personal.
-        </Text>
+        <Text style={styles.sectionDesc}>Mentioned in the notification to make it feel personal.</Text>
         <View style={styles.card}>
           {ENTERTAINMENT_APPS.map((app, i) => (
             <React.Fragment key={app.id}>
@@ -235,15 +225,12 @@ export default function EntertainmentReminderScreen() {
           ))}
         </View>
 
-        {/* Daily Summary */}
         <Text style={styles.sectionTitle}>Daily Summary</Text>
         <View style={styles.card}>
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.toggleLabel}>End-of-Day Summary</Text>
-              <Text style={styles.toggleDesc}>
-                Notification at {settings.dailySummaryHour}:00 with your calorie recap
-              </Text>
+              <Text style={styles.toggleDesc}>Calorie recap at {settings.dailySummaryHour}:00</Text>
             </View>
             <Switch
               value={settings.dailySummaryEnabled}
@@ -264,7 +251,7 @@ export default function EntertainmentReminderScreen() {
 
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>
-            💡 Set the time you usually eat — reminders fire daily at that time, no matter what app you're in. Tap the notification to snap your food and log instantly.
+            💡 You set a deadline — say 3pm for lunch. If you logged your lunch already, no notification. If you forgot, you get a nudge at 3pm to snap and log it.
           </Text>
         </View>
       </ScrollView>
@@ -290,13 +277,10 @@ const styles = StyleSheet.create({
   toggleRow: { flexDirection: "row", alignItems: "center", paddingVertical: 14 },
   toggleLabel: { fontSize: 15, fontWeight: "600", color: "#111827" },
   toggleDesc: { fontSize: 12, color: "#6B7280", marginTop: 2 },
-  mealRow: {
-    flexDirection: "row", alignItems: "center",
-    justifyContent: "space-between", paddingVertical: 14,
-  },
+  mealRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 14 },
   mealLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
   mealLabel: { fontSize: 15, fontWeight: "600", color: "#111827" },
-  mealTime: { fontSize: 12, color: "#6B7280", marginTop: 2 },
+  deadlineHint: { fontSize: 12, color: "#6B7280", marginTop: 2 },
   appRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12 },
   appIcon: { fontSize: 22, marginRight: 12 },
   appName: { flex: 1, fontSize: 15, color: "#111827" },

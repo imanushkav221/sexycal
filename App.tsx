@@ -10,7 +10,8 @@ import { getDb } from "@/db/migrate";
 import { runSync } from "@/sync/syncWorker";
 import { seedIndianFoods } from "@/db/seedIndianFoods";
 import { setupNotifications, scheduleDailySummary } from "@/lib/notifications";
-import { initEntertainmentReminder, getEntertainmentSettings } from "@/lib/entertainmentReminder";
+import { initEntertainmentReminder, getEntertainmentSettings, cancelRemindersForLoggedMeals } from "@/lib/entertainmentReminder";
+import { supabase } from "@/lib/supabase";
 
 export default function App() {
   const [dbReady, setDbReady] = useState(false);
@@ -39,7 +40,12 @@ export default function App() {
           })
           .catch(console.error);
 
-        // Initialize entertainment reminder (AppState-based)
+        // Cancel reminders for meals already logged today
+        supabase.auth.getSession().then(({ data }) => {
+          const userId = data.session?.user?.id;
+          if (userId) cancelRemindersForLoggedMeals(userId).catch(console.error);
+        });
+
         initEntertainmentReminder();
 
         return () => clearInterval(interval);
