@@ -1,0 +1,7 @@
+{
+  "name": "app-detector",
+  "version": "1.0.0",
+  "description": "Native Android foreground app detection for meal reminders",
+  "main": "index",
+  "files": ["android", "index.ts", "plugin.js"]
+}

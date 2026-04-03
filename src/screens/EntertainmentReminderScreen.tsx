@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  AppState,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { setupNotifications } from "@/lib/notifications";
@@ -14,109 +15,66 @@ import {
   ENTERTAINMENT_APPS,
   getEntertainmentSettings,
   saveEntertainmentSettings,
-  scheduleMealReminders,
   type EntertainmentSettings,
-  type MealDeadline,
 } from "@/lib/entertainmentReminder";
-
-function formatTime(hour: number, minute: number): string {
-  const h = hour % 12 || 12;
-  const m = String(minute).padStart(2, "0");
-  const ampm = hour < 12 ? "AM" : "PM";
-  return `${h}:${m} ${ampm}`;
-}
-
-function TimeAdjuster({
-  meal,
-  disabled,
-  onChange,
-}: {
-  meal: MealDeadline;
-  disabled: boolean;
-  onChange: (hour: number, minute: number) => void;
-}) {
-  const adjustHour = (delta: number) => onChange((meal.deadlineHour + delta + 24) % 24, meal.deadlineMinute);
-  const adjustMinute = (delta: number) => {
-    let m = meal.deadlineMinute + delta;
-    if (m < 0) m = 45;
-    if (m >= 60) m = 0;
-    onChange(meal.deadlineHour, m);
-  };
-
-  return (
-    <View style={[ts.container, disabled && ts.disabled]}>
-      <View style={ts.unit}>
-        <TouchableOpacity onPress={() => adjustHour(1)} disabled={disabled} style={ts.btn}>
-          <Text style={ts.arrow}>▲</Text>
-        </TouchableOpacity>
-        <Text style={ts.value}>{String(meal.deadlineHour).padStart(2, "0")}</Text>
-        <TouchableOpacity onPress={() => adjustHour(-1)} disabled={disabled} style={ts.btn}>
-          <Text style={ts.arrow}>▼</Text>
-        </TouchableOpacity>
-      </View>
-      <Text style={ts.colon}>:</Text>
-      <View style={ts.unit}>
-        <TouchableOpacity onPress={() => adjustMinute(15)} disabled={disabled} style={ts.btn}>
-          <Text style={ts.arrow}>▲</Text>
-        </TouchableOpacity>
-        <Text style={ts.value}>{String(meal.deadlineMinute).padStart(2, "0")}</Text>
-        <TouchableOpacity onPress={() => adjustMinute(-15)} disabled={disabled} style={ts.btn}>
-          <Text style={ts.arrow}>▼</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-const ts = StyleSheet.create({
-  container: { flexDirection: "row", alignItems: "center" },
-  disabled: { opacity: 0.4 },
-  unit: { alignItems: "center", width: 36 },
-  btn: { padding: 4 },
-  arrow: { fontSize: 12, color: "#2563EB", fontWeight: "700" },
-  value: { fontSize: 18, fontWeight: "700", color: "#111827", lineHeight: 24 },
-  colon: { fontSize: 18, fontWeight: "700", color: "#111827", marginHorizontal: 2 },
-});
+import {
+  hasUsagePermission,
+  openPermissionSettings,
+  startWatching,
+  stopWatching,
+} from "app-detector";
+import { DEFAULT_MEAL_WINDOWS } from "@/utils/mealTime";
 
 export default function EntertainmentReminderScreen() {
-  const [settings, setSettings] = useState<EntertainmentSettings | null>(null);
+  const [settings, setSettings] = useState<EntertainmentSettings>({
+    enabled: false,
+    selectedApps: [],
+    dailySummaryEnabled: true,
+    dailySummaryHour: 21,
+  });
+  const [hasPermission, setHasPermission] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const refreshPermission = useCallback(() => {
+    setHasPermission(hasUsagePermission());
+  }, []);
 
   useEffect(() => {
     getEntertainmentSettings().then(setSettings);
-  }, []);
+    refreshPermission();
 
-  if (!settings) return null;
-
-  const save = async (updated: EntertainmentSettings) => {
-    setSettings(updated);
-    await saveEntertainmentSettings(updated);
-    await scheduleMealReminders(updated);
-  };
+    // Re-check permission when user returns from Settings
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshPermission();
+    });
+    return () => sub.remove();
+  }, [refreshPermission]);
 
   const toggleEnabled = async (val: boolean) => {
     if (val) {
-      const granted = await setupNotifications();
-      if (!granted) {
-        Alert.alert("Permission Required", "Please enable notifications in your device settings.");
+      const notifGranted = await setupNotifications();
+      if (!notifGranted) {
+        Alert.alert("Permission Required", "Please enable notifications in device settings.");
         return;
       }
+      if (!hasPermission) {
+        Alert.alert(
+          "Usage Access Required",
+          'To detect which app you\'re using, tap "Open Settings", find SexyCAL in the list, and turn it on.',
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Open Settings", onPress: openPermissionSettings },
+          ]
+        );
+        return;
+      }
+      startWatching(settings.selectedApps, DEFAULT_MEAL_WINDOWS);
+    } else {
+      stopWatching();
     }
-    await save({ ...settings, enabled: val });
-  };
-
-  const toggleMeal = async (mealType: string) => {
-    const mealDeadlines = settings.mealDeadlines.map((m) =>
-      m.mealType === mealType ? { ...m, enabled: !m.enabled } : m
-    );
-    await save({ ...settings, mealDeadlines });
-  };
-
-  const updateDeadline = async (mealType: string, hour: number, minute: number) => {
-    const mealDeadlines = settings.mealDeadlines.map((m) =>
-      m.mealType === mealType ? { ...m, deadlineHour: hour, deadlineMinute: minute } : m
-    );
-    await save({ ...settings, mealDeadlines });
+    const updated = { ...settings, enabled: val };
+    setSettings(updated);
+    await saveEntertainmentSettings(updated);
   };
 
   const toggleApp = async (appId: string) => {
@@ -126,6 +84,10 @@ export default function EntertainmentReminderScreen() {
     const updated = { ...settings, selectedApps: selected };
     setSettings(updated);
     await saveEntertainmentSettings(updated);
+    // Update watching list if active
+    if (settings.enabled && hasPermission) {
+      startWatching(selected, DEFAULT_MEAL_WINDOWS);
+    }
   };
 
   const toggleDailySummary = async (val: boolean) => {
@@ -137,10 +99,10 @@ export default function EntertainmentReminderScreen() {
   const testNotification = async () => {
     setSaving(true);
     try {
-      const granted = await setupNotifications();
-      if (!granted) { Alert.alert("Permission Required", "Enable notifications first."); return; }
       const { sendMealReminder } = await import("@/lib/notifications");
-      const appNames = ENTERTAINMENT_APPS.filter((a) => settings.selectedApps.includes(a.id)).map((a) => a.name);
+      const appNames = ENTERTAINMENT_APPS
+        .filter((a) => settings.selectedApps.includes(a.id))
+        .map((a) => a.name);
       await sendMealReminder("lunch", appNames[0]);
     } catch {
       Alert.alert("Error", "Failed to send test notification.");
@@ -152,16 +114,36 @@ export default function EntertainmentReminderScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.title}>Meal Reminders</Text>
+        <Text style={styles.title}>Smart Reminders</Text>
         <Text style={styles.subtitle}>
-          Set a deadline for each meal. If you haven't logged it by then, you'll get a nudge — regardless of when you actually ate.
+          Open SexyCAL before eating, then switch to Netflix or YouTube.
+          We detect the switch and nudge you to log your food in 5 seconds — while it's right in front of you.
         </Text>
 
+        {/* Permission banner */}
+        {!hasPermission && (
+          <TouchableOpacity style={styles.permBanner} onPress={openPermissionSettings}>
+            <Text style={styles.permBannerTitle}>⚠️ Usage Access Required</Text>
+            <Text style={styles.permBannerDesc}>
+              Tap here → find SexyCAL → turn it on. Required to detect when you open Netflix, YouTube, etc.
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {hasPermission && (
+          <View style={styles.permOk}>
+            <Text style={styles.permOkText}>✓ Usage access granted</Text>
+          </View>
+        )}
+
+        {/* Global Toggle */}
         <View style={styles.card}>
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.toggleLabel}>Enable Meal Reminders</Text>
-              <Text style={styles.toggleDesc}>Reminds you if you forget to log</Text>
+              <Text style={styles.toggleLabel}>Enable Smart Reminders</Text>
+              <Text style={styles.toggleDesc}>
+                Detects when you open entertainment apps during meal time
+              </Text>
             </View>
             <Switch
               value={settings.enabled}
@@ -172,48 +154,18 @@ export default function EntertainmentReminderScreen() {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Remind me if not logged by...</Text>
+        {/* Apps */}
+        <Text style={styles.sectionTitle}>Watch These Apps</Text>
         <Text style={styles.sectionDesc}>
-          Set a cutoff time. If you ate at 12 or 2pm — doesn't matter. You'll only be reminded if you forgot.
+          Get nudged when you switch to any of these during a meal window.
         </Text>
-        <View style={styles.card}>
-          {settings.mealDeadlines.map((meal, i) => (
-            <React.Fragment key={meal.mealType}>
-              <View style={styles.mealRow}>
-                <TouchableOpacity
-                  onPress={() => toggleMeal(meal.mealType)}
-                  disabled={!settings.enabled}
-                  style={styles.mealLeft}
-                >
-                  <View style={[styles.checkbox, meal.enabled && styles.checkboxActive, !settings.enabled && styles.dimmed]}>
-                    {meal.enabled && <Text style={styles.checkmark}>✓</Text>}
-                  </View>
-                  <View>
-                    <Text style={[styles.mealLabel, !settings.enabled && styles.dimmed]}>
-                      {meal.icon} {meal.label}
-                    </Text>
-                    <Text style={styles.deadlineHint}>
-                      nudge at {formatTime(meal.deadlineHour, meal.deadlineMinute)}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-                <TimeAdjuster
-                  meal={meal}
-                  disabled={!settings.enabled || !meal.enabled}
-                  onChange={(h, m) => updateDeadline(meal.mealType, h, m)}
-                />
-              </View>
-              {i < settings.mealDeadlines.length - 1 && <View style={styles.divider} />}
-            </React.Fragment>
-          ))}
-        </View>
-
-        <Text style={styles.sectionTitle}>Your Apps (optional)</Text>
-        <Text style={styles.sectionDesc}>Mentioned in the notification to make it feel personal.</Text>
         <View style={styles.card}>
           {ENTERTAINMENT_APPS.map((app, i) => (
             <React.Fragment key={app.id}>
-              <TouchableOpacity style={styles.appRow} onPress={() => toggleApp(app.id)}>
+              <TouchableOpacity
+                style={styles.appRow}
+                onPress={() => toggleApp(app.id)}
+              >
                 <Text style={styles.appIcon}>{app.icon}</Text>
                 <Text style={styles.appName}>{app.name}</Text>
                 <View style={[styles.checkbox, settings.selectedApps.includes(app.id) && styles.checkboxActive]}>
@@ -225,12 +177,30 @@ export default function EntertainmentReminderScreen() {
           ))}
         </View>
 
+        {/* Meal Windows */}
+        <Text style={styles.sectionTitle}>Active Meal Windows</Text>
+        <Text style={styles.sectionDesc}>Reminders only fire during these hours.</Text>
+        <View style={styles.card}>
+          {DEFAULT_MEAL_WINDOWS.map((w, i) => (
+            <React.Fragment key={w.mealType}>
+              <View style={styles.windowRow}>
+                <Text style={styles.windowLabel}>{w.label}</Text>
+                <Text style={styles.windowTime}>{w.startHour}:00 – {w.endHour}:00</Text>
+              </View>
+              {i < DEFAULT_MEAL_WINDOWS.length - 1 && <View style={styles.divider} />}
+            </React.Fragment>
+          ))}
+        </View>
+
+        {/* Daily Summary */}
         <Text style={styles.sectionTitle}>Daily Summary</Text>
         <View style={styles.card}>
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.toggleLabel}>End-of-Day Summary</Text>
-              <Text style={styles.toggleDesc}>Calorie recap at {settings.dailySummaryHour}:00</Text>
+              <Text style={styles.toggleDesc}>
+                Notification at {settings.dailySummaryHour}:00 with your calorie recap
+              </Text>
             </View>
             <Switch
               value={settings.dailySummaryEnabled}
@@ -251,7 +221,7 @@ export default function EntertainmentReminderScreen() {
 
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>
-            💡 You set a deadline — say 3pm for lunch. If you logged your lunch already, no notification. If you forgot, you get a nudge at 3pm to snap and log it.
+            💡 Flow: open SexyCAL → sit down to eat → switch to your show → notification fires in 5s → tap to snap your food. The service runs quietly in the background with a minimal notification.
           </Text>
         </View>
       </ScrollView>
@@ -263,7 +233,18 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F3F4F6" },
   scroll: { padding: 16, paddingBottom: 40 },
   title: { fontSize: 24, fontWeight: "700", color: "#111827", marginBottom: 4 },
-  subtitle: { fontSize: 14, color: "#6B7280", marginBottom: 20, lineHeight: 20 },
+  subtitle: { fontSize: 14, color: "#6B7280", marginBottom: 16, lineHeight: 20 },
+  permBanner: {
+    backgroundColor: "#FEF3C7", borderRadius: 12, padding: 14,
+    marginBottom: 12, borderWidth: 1, borderColor: "#FDE68A",
+  },
+  permBannerTitle: { fontSize: 14, fontWeight: "700", color: "#92400E", marginBottom: 4 },
+  permBannerDesc: { fontSize: 13, color: "#92400E", lineHeight: 18 },
+  permOk: {
+    backgroundColor: "#F0FDF4", borderRadius: 12, padding: 12,
+    marginBottom: 12, borderWidth: 1, borderColor: "#BBF7D0",
+  },
+  permOkText: { fontSize: 13, fontWeight: "600", color: "#16A34A" },
   sectionTitle: {
     fontSize: 13, fontWeight: "600", color: "#6B7280",
     textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8, marginTop: 16,
@@ -277,12 +258,8 @@ const styles = StyleSheet.create({
   toggleRow: { flexDirection: "row", alignItems: "center", paddingVertical: 14 },
   toggleLabel: { fontSize: 15, fontWeight: "600", color: "#111827" },
   toggleDesc: { fontSize: 12, color: "#6B7280", marginTop: 2 },
-  mealRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 14 },
-  mealLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
-  mealLabel: { fontSize: 15, fontWeight: "600", color: "#111827" },
-  deadlineHint: { fontSize: 12, color: "#6B7280", marginTop: 2 },
   appRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12 },
-  appIcon: { fontSize: 22, marginRight: 12 },
+  appIcon: { fontSize: 24, marginRight: 12 },
   appName: { flex: 1, fontSize: 15, color: "#111827" },
   checkbox: {
     width: 24, height: 24, borderRadius: 6, borderWidth: 2,
@@ -290,8 +267,10 @@ const styles = StyleSheet.create({
   },
   checkboxActive: { backgroundColor: "#2563EB", borderColor: "#2563EB" },
   checkmark: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
-  dimmed: { opacity: 0.4 },
   divider: { height: 1, backgroundColor: "#F3F4F6" },
+  windowRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12 },
+  windowLabel: { fontSize: 15, color: "#111827" },
+  windowTime: { fontSize: 14, color: "#6B7280", fontWeight: "500" },
   testBtn: {
     backgroundColor: "#EFF6FF", borderRadius: 12, paddingVertical: 14,
     alignItems: "center", marginTop: 20, borderWidth: 1, borderColor: "#BFDBFE",

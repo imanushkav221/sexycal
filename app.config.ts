@@ -38,6 +38,7 @@ export default (): ExpoConfig => ({
   plugins: [
     ["expo-camera", { cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to capture food photos." }],
     "expo-updates",
+    "./modules/app-detector/plugin",
   ],
   extra: {
     eas: {

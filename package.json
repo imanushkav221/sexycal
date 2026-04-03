@@ -32,7 +32,8 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-url-polyfill": "^2.0.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "app-detector": "file:./modules/app-detector"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
