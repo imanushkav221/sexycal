@@ -12,16 +12,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { setupNotifications } from "@/lib/notifications";
 import {
   ENTERTAINMENT_APPS,
+  MEAL_REMINDERS,
   getEntertainmentSettings,
   saveEntertainmentSettings,
+  scheduleMealReminders,
   type EntertainmentSettings,
 } from "@/lib/entertainmentReminder";
-import { DEFAULT_MEAL_WINDOWS } from "@/utils/mealTime";
 
 export default function EntertainmentReminderScreen() {
   const [settings, setSettings] = useState<EntertainmentSettings>({
     enabled: false,
     selectedApps: [],
+    enabledMeals: ["breakfast", "lunch", "dinner"],
     dailySummaryEnabled: true,
     dailySummaryHour: 21,
   });
@@ -45,6 +47,7 @@ export default function EntertainmentReminderScreen() {
     const updated = { ...settings, enabled: val };
     setSettings(updated);
     await saveEntertainmentSettings(updated);
+    await scheduleMealReminders(updated);
   };
 
   const toggleApp = async (appId: string) => {
@@ -54,6 +57,16 @@ export default function EntertainmentReminderScreen() {
     const updated = { ...settings, selectedApps: selected };
     setSettings(updated);
     await saveEntertainmentSettings(updated);
+  };
+
+  const toggleMeal = async (mealType: string) => {
+    const meals = settings.enabledMeals.includes(mealType)
+      ? settings.enabledMeals.filter((m) => m !== mealType)
+      : [...settings.enabledMeals, mealType];
+    const updated = { ...settings, enabledMeals: meals };
+    setSettings(updated);
+    await saveEntertainmentSettings(updated);
+    await scheduleMealReminders(updated);
   };
 
   const toggleDailySummary = async (val: boolean) => {
@@ -74,10 +87,9 @@ export default function EntertainmentReminderScreen() {
       const appNames = ENTERTAINMENT_APPS
         .filter((a) => settings.selectedApps.includes(a.id))
         .map((a) => a.name);
-      const appName = appNames.length > 0 ? appNames[0] : "Netflix";
+      const appName = appNames.length > 0 ? appNames[0] : undefined;
       await sendMealReminder("lunch", appName);
-      // No alert — so notification appears immediately as a banner
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "Failed to send test notification.");
     } finally {
       setSaving(false);
@@ -87,10 +99,10 @@ export default function EntertainmentReminderScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.title}>Smart Reminders</Text>
+        <Text style={styles.title}>Meal Reminders</Text>
         <Text style={styles.subtitle}>
-          Get a nudge to log your food whenever you leave SexyCAL during a meal window.
-          Fires 5 seconds after you switch away — tap to log instantly.
+          Get notified at meal times to log your food — even if you're watching something.
+          Tap the notification to open the camera and log instantly.
         </Text>
 
         {/* Global Toggle */}
@@ -99,7 +111,7 @@ export default function EntertainmentReminderScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.toggleLabel}>Enable Meal Reminders</Text>
               <Text style={styles.toggleDesc}>
-                Nudges you within seconds of leaving the app during a meal window
+                Daily notifications at breakfast, lunch, and dinner time
               </Text>
             </View>
             <Switch
@@ -111,11 +123,48 @@ export default function EntertainmentReminderScreen() {
           </View>
         </View>
 
-        {/* Entertainment Apps */}
-        <Text style={styles.sectionTitle}>Entertainment Apps</Text>
+        {/* Meal Times */}
+        <Text style={styles.sectionTitle}>Reminder Times</Text>
         <Text style={styles.sectionDesc}>
-          Select apps you use during meals. We'll send a meal logging reminder
-          during breakfast, lunch, and dinner hours.
+          Choose which meals to get reminded for.
+        </Text>
+        <View style={styles.card}>
+          {MEAL_REMINDERS.map((meal, i) => (
+            <React.Fragment key={meal.mealType}>
+              <TouchableOpacity
+                style={styles.appRow}
+                onPress={() => toggleMeal(meal.mealType)}
+                disabled={!settings.enabled}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.appName, !settings.enabled && styles.disabled]}>
+                    {meal.label}
+                  </Text>
+                  <Text style={styles.timeText}>
+                    {meal.defaultHour}:{String(meal.defaultMinute).padStart(2, "0")} daily
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.checkbox,
+                    settings.enabledMeals.includes(meal.mealType) && styles.checkboxActive,
+                    !settings.enabled && styles.disabled,
+                  ]}
+                >
+                  {settings.enabledMeals.includes(meal.mealType) && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+              {i < MEAL_REMINDERS.length - 1 && <View style={styles.divider} />}
+            </React.Fragment>
+          ))}
+        </View>
+
+        {/* Entertainment Apps */}
+        <Text style={styles.sectionTitle}>Your Apps</Text>
+        <Text style={styles.sectionDesc}>
+          Select apps you use during meals — we'll mention them in the notification to make it personal.
         </Text>
         <View style={styles.card}>
           {ENTERTAINMENT_APPS.map((app, i) => (
@@ -126,12 +175,7 @@ export default function EntertainmentReminderScreen() {
                 disabled={!settings.enabled}
               >
                 <Text style={styles.appIcon}>{app.icon}</Text>
-                <Text
-                  style={[
-                    styles.appName,
-                    !settings.enabled && styles.disabled,
-                  ]}
-                >
+                <Text style={[styles.appName, !settings.enabled && styles.disabled]}>
                   {app.name}
                 </Text>
                 <View
@@ -147,22 +191,6 @@ export default function EntertainmentReminderScreen() {
                 </View>
               </TouchableOpacity>
               {i < ENTERTAINMENT_APPS.length - 1 && <View style={styles.divider} />}
-            </React.Fragment>
-          ))}
-        </View>
-
-        {/* Meal Windows */}
-        <Text style={styles.sectionTitle}>Meal Windows</Text>
-        <View style={styles.card}>
-          {DEFAULT_MEAL_WINDOWS.map((w, i) => (
-            <React.Fragment key={w.mealType}>
-              <View style={styles.windowRow}>
-                <Text style={styles.windowLabel}>{w.label}</Text>
-                <Text style={styles.windowTime}>
-                  {w.startHour}:00 – {w.endHour}:00
-                </Text>
-              </View>
-              {i < DEFAULT_MEAL_WINDOWS.length - 1 && <View style={styles.divider} />}
             </React.Fragment>
           ))}
         </View>
@@ -200,7 +228,8 @@ export default function EntertainmentReminderScreen() {
         {/* Info */}
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>
-            💡 A reminder fires 5 seconds after you leave SexyCAL during a meal window. The app name shown is just a random one from your list — we can't detect which app you opened. Come back to SexyCAL to cancel it.
+            💡 Reminders fire at your set times every day — no need to open SexyCAL first.
+            Just tap the notification to snap your food and log it instantly.
           </Text>
         </View>
       </ScrollView>
@@ -211,137 +240,41 @@ export default function EntertainmentReminderScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F3F4F6" },
   scroll: { padding: 16, paddingBottom: 40 },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 20,
-    lineHeight: 20,
-  },
+  title: { fontSize: 24, fontWeight: "700", color: "#111827", marginBottom: 4 },
+  subtitle: { fontSize: 14, color: "#6B7280", marginBottom: 20, lineHeight: 20 },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#6B7280",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 8,
-    marginTop: 16,
+    fontSize: 13, fontWeight: "600", color: "#6B7280",
+    textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8, marginTop: 16,
   },
-  sectionDesc: {
-    fontSize: 13,
-    color: "#9CA3AF",
-    marginBottom: 8,
-    lineHeight: 18,
-  },
+  sectionDesc: { fontSize: 13, color: "#9CA3AF", marginBottom: 8, lineHeight: 18 },
   card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1,
+    backgroundColor: "#FFFFFF", borderRadius: 14, paddingHorizontal: 14,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
   },
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-  },
-  toggleLabel: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  toggleDesc: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginTop: 2,
-  },
-  appRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  appIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  appName: {
-    flex: 1,
-    fontSize: 15,
-    color: "#111827",
-  },
+  toggleRow: { flexDirection: "row", alignItems: "center", paddingVertical: 14 },
+  toggleLabel: { fontSize: 15, fontWeight: "600", color: "#111827" },
+  toggleDesc: { fontSize: 12, color: "#6B7280", marginTop: 2 },
+  appRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12 },
+  appIcon: { fontSize: 24, marginRight: 12 },
+  appName: { flex: 1, fontSize: 15, color: "#111827" },
+  timeText: { fontSize: 12, color: "#6B7280", marginTop: 2 },
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: "#D1D5DB",
-    justifyContent: "center",
-    alignItems: "center",
+    width: 24, height: 24, borderRadius: 6, borderWidth: 2,
+    borderColor: "#D1D5DB", justifyContent: "center", alignItems: "center",
   },
-  checkboxActive: {
-    backgroundColor: "#2563EB",
-    borderColor: "#2563EB",
-  },
-  checkmark: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  disabled: {
-    opacity: 0.4,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#F3F4F6",
-  },
-  windowRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  windowLabel: {
-    fontSize: 15,
-    color: "#111827",
-  },
-  windowTime: {
-    fontSize: 14,
-    color: "#6B7280",
-    fontWeight: "500",
-  },
+  checkboxActive: { backgroundColor: "#2563EB", borderColor: "#2563EB" },
+  checkmark: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  disabled: { opacity: 0.4 },
+  divider: { height: 1, backgroundColor: "#F3F4F6" },
   testBtn: {
-    backgroundColor: "#EFF6FF",
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
+    backgroundColor: "#EFF6FF", borderRadius: 12, paddingVertical: 14,
+    alignItems: "center", marginTop: 20, borderWidth: 1, borderColor: "#BFDBFE",
   },
-  testBtnText: {
-    color: "#2563EB",
-    fontSize: 15,
-    fontWeight: "600",
-  },
+  testBtnText: { color: "#2563EB", fontSize: 15, fontWeight: "600" },
   infoBox: {
-    backgroundColor: "#FFFBEB",
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: "#FDE68A",
+    backgroundColor: "#FFFBEB", borderRadius: 12, padding: 14,
+    marginTop: 16, borderWidth: 1, borderColor: "#FDE68A",
   },
-  infoText: {
-    fontSize: 13,
-    color: "#92400E",
-    lineHeight: 18,
-  },
+  infoText: { fontSize: 13, color: "#92400E", lineHeight: 18 },
 });

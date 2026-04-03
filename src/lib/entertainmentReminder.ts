@@ -1,11 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppState, AppStateStatus } from "react-native";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import { getActiveMealWindow } from "@/utils/mealTime";
 
 const SETTINGS_KEY = "@entertainment_reminder_settings";
-const REMINDER_DELAY_SECONDS = 5; // 5 seconds — fires almost immediately when switching away
 
 export interface EntertainmentApp {
   id: string;
@@ -22,9 +19,23 @@ export const ENTERTAINMENT_APPS: EntertainmentApp[] = [
   { id: "instagram", name: "Instagram", icon: "📷" },
 ];
 
+export interface MealReminder {
+  mealType: "breakfast" | "lunch" | "dinner";
+  label: string;
+  defaultHour: number;
+  defaultMinute: number;
+}
+
+export const MEAL_REMINDERS: MealReminder[] = [
+  { mealType: "breakfast", label: "Breakfast", defaultHour: 8, defaultMinute: 30 },
+  { mealType: "lunch", label: "Lunch", defaultHour: 13, defaultMinute: 0 },
+  { mealType: "dinner", label: "Dinner", defaultHour: 20, defaultMinute: 0 },
+];
+
 export interface EntertainmentSettings {
   enabled: boolean;
-  selectedApps: string[]; // app ids
+  selectedApps: string[];
+  enabledMeals: string[]; // mealTypes that have reminders on
   dailySummaryEnabled: boolean;
   dailySummaryHour: number;
 }
@@ -32,6 +43,7 @@ export interface EntertainmentSettings {
 const DEFAULT_SETTINGS: EntertainmentSettings = {
   enabled: false,
   selectedApps: [],
+  enabledMeals: ["breakfast", "lunch", "dinner"],
   dailySummaryEnabled: true,
   dailySummaryHour: 21,
 };
@@ -52,68 +64,49 @@ export async function saveEntertainmentSettings(
   await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
-// Track the scheduled notification so we can cancel it when the user returns
-let pendingNotificationId: string | null = null;
-let appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
-
-async function handleAppStateChange(nextState: AppStateStatus): Promise<void> {
-  try {
-    const settings = await getEntertainmentSettings();
-
-    if (nextState === "background" || nextState === "inactive") {
-      // App going to background — schedule a meal reminder if conditions are met
-      if (!settings.enabled || settings.selectedApps.length === 0) return;
-
-      const mealWindow = getActiveMealWindow();
-      if (!mealWindow) return;
-
-      // Cancel any previously pending notification before scheduling a new one
-      if (pendingNotificationId) {
-        await Notifications.cancelScheduledNotificationAsync(pendingNotificationId).catch(() => {});
-        pendingNotificationId = null;
-      }
-
-      // Pick a random selected app name
-      const selectedAppNames = ENTERTAINMENT_APPS
-        .filter((a) => settings.selectedApps.includes(a.id))
-        .map((a) => a.name);
-      const randomApp =
-        selectedAppNames[Math.floor(Math.random() * selectedAppNames.length)];
-
-      pendingNotificationId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `Time to log your ${mealWindow.label.toLowerCase()}! 🍽️`,
-          body: `Enjoying ${randomApp}? Don't forget to log what you're eating.`,
-          data: { screen: "FoodSearch", mealType: mealWindow.mealType },
-          ...(Platform.OS === "android" && { channelId: "meal-reminders" }),
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: REMINDER_DELAY_SECONDS,
-        },
-      });
-    } else if (nextState === "active") {
-      // App came back to foreground — cancel any pending reminder
-      if (pendingNotificationId) {
-        await Notifications.cancelScheduledNotificationAsync(pendingNotificationId).catch(() => {});
-        pendingNotificationId = null;
-      }
+// Cancel all scheduled meal reminders
+async function cancelMealReminders(): Promise<void> {
+  const all = await Notifications.getAllScheduledNotificationsAsync();
+  for (const n of all) {
+    if (n.content.data?.type === "meal-reminder") {
+      await Notifications.cancelScheduledNotificationAsync(n.identifier);
     }
-  } catch (err) {
-    console.error("[EntertainmentReminder] AppState handler error:", err);
   }
 }
 
-export function initEntertainmentReminder(): void {
-  if (appStateSubscription) {
-    appStateSubscription.remove();
+// Schedule daily notifications at each enabled meal time
+export async function scheduleMealReminders(settings: EntertainmentSettings): Promise<void> {
+  await cancelMealReminders();
+
+  if (!settings.enabled || settings.enabledMeals.length === 0) return;
+
+  const appNames = ENTERTAINMENT_APPS
+    .filter((a) => settings.selectedApps.includes(a.id))
+    .map((a) => a.name);
+
+  for (const meal of MEAL_REMINDERS) {
+    if (!settings.enabledMeals.includes(meal.mealType)) continue;
+
+    const appHint = appNames.length > 0
+      ? `Watching ${appNames[Math.floor(Math.random() * appNames.length)]}? `
+      : "";
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `Time to log your ${meal.label.toLowerCase()}! 🍽️`,
+        body: `${appHint}Snap a photo of your food to log it instantly.`,
+        data: { type: "meal-reminder", screen: "FoodPhoto", mealType: meal.mealType },
+        ...(Platform.OS === "android" && { channelId: "meal-reminders" }),
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: meal.defaultHour,
+        minute: meal.defaultMinute,
+      },
+    });
   }
-  appStateSubscription = AppState.addEventListener("change", handleAppStateChange);
 }
 
-export function cleanupEntertainmentReminder(): void {
-  if (appStateSubscription) {
-    appStateSubscription.remove();
-    appStateSubscription = null;
-  }
-}
+// No-op — kept for compatibility with App.tsx import
+export function initEntertainmentReminder(): void {}
+export function cleanupEntertainmentReminder(): void {}
