@@ -4,7 +4,7 @@ A smart calorie tracking app for Android. Snap a photo of your food and let AI f
 
 ## Download
 
-**[Download APK](https://expo.dev/artifacts/eas/cCEhrzVfXNSiELL9JPML1X.apk)** — Install directly on Android (no Play Store needed)
+**[Download APK](https://expo.dev/artifacts/eas/j7f9iqbDmf15oF6TqijtEo.apk)** — Install directly on Android (no Play Store needed)
 
 > Enable "Install from unknown sources" in Android settings if prompted.
 
