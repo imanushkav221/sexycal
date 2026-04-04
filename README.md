@@ -4,7 +4,7 @@ A smart calorie tracking app for Android. Snap a photo of your food and let AI f
 
 ## Download
 
-**[Download APK](https://github.com/imanushkav221/sexycal/releases/download/v1.0.2/SexyCAL-v1.0.2.apk)** — Install directly on Android (no Play Store needed)
+**[Download APK](https://github.com/imanushkav221/sexycal/releases/download/v1.0.3/SexyCAL-v1.0.3.apk)** — Install directly on Android (no Play Store needed)
 
 > Enable "Install from unknown sources" in Android settings if prompted.
 
