@@ -14,18 +14,17 @@ class AppDetectorModule : Module() {
         Name("AppDetector")
 
         Function("hasPermission") {
-            hasUsagePermission()
+            return@Function hasUsagePermission()
         }
 
         Function("openPermissionSettings") {
-            val context = appContext.reactContext ?: return@Function
+            val context = appContext.reactContext ?: return@Function null
             try {
                 val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 context.startActivity(intent)
             } catch (e: Exception) {
-                // Fallback: open general app settings
                 try {
                     val intent = Intent(Settings.ACTION_SETTINGS).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -33,12 +32,12 @@ class AppDetectorModule : Module() {
                     context.startActivity(intent)
                 } catch (_: Exception) {}
             }
+            return@Function null
         }
 
         Function("startWatching") { targetPackages: List<String>, mealWindowStrings: List<String> ->
-            val context = appContext.reactContext ?: return@Function
+            val context = appContext.reactContext ?: return@Function null
 
-            // Save to SharedPreferences so BootReceiver can restart the service
             val prefs = context.getSharedPreferences("sexycal_app_detector", Context.MODE_PRIVATE)
             prefs.edit()
                 .putStringSet("targetPackages", targetPackages.toSet())
@@ -51,16 +50,17 @@ class AppDetectorModule : Module() {
                 putStringArrayListExtra("mealWindows", ArrayList(mealWindowStrings))
             }
             context.startService(intent)
+            return@Function null
         }
 
         Function("stopWatching") {
-            val context = appContext.reactContext ?: return@Function
+            val context = appContext.reactContext ?: return@Function null
 
-            // Clear saved state so boot receiver doesn't restart
             val prefs = context.getSharedPreferences("sexycal_app_detector", Context.MODE_PRIVATE)
             prefs.edit().putBoolean("enabled", false).apply()
 
             context.stopService(Intent(context, AppDetectorService::class.java))
+            return@Function null
         }
     }
 

@@ -32,9 +32,7 @@ export default (): ExpoConfig => ({
   updates: {
     url: "https://u.expo.dev/66e18931-544e-41b1-a6e1-3c47f82d9890",
   },
-  runtimeVersion: {
-    policy: "appVersion",
-  },
+  runtimeVersion: "1.0.2",
   plugins: [
     ["expo-camera", { cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to capture food photos." }],
     "expo-updates",
@@ -44,5 +42,8 @@ export default (): ExpoConfig => ({
     eas: {
       projectId: "66e18931-544e-41b1-a6e1-3c47f82d9890",
     },
+  },
+  _internal: {
+    autolinkedModuleSearchPaths: ["node_modules", "modules"],
   },
 });
