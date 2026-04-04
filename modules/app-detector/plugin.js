@@ -51,6 +51,7 @@ function withAppDetector(config) {
 
     addPermission("android.permission.FOREGROUND_SERVICE");
     addPermission("android.permission.RECEIVE_BOOT_COMPLETED");
+    addPermission("android.permission.PACKAGE_USAGE_STATS");
 
     return config;
   });

@@ -154,12 +154,20 @@ export default function AppNavigator() {
           return;
         }
 
-        // Step 3: Check Supabase directly (bypasses useProfile entirely)
-        const { data } = await supabase
+        // Step 3: Ensure Supabase client has the auth token, then query
+        // On fresh install the client might not have headers set yet
+        await supabase.auth.setSession({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        });
+
+        const { data, error } = await supabase
           .from("profiles")
           .select("onboarding_complete")
           .eq("id", session.user.id)
           .single();
+
+        console.log("[AppNavigator] Supabase profile check:", { data, error: error?.message });
 
         if (data?.onboarding_complete === 1) {
           await AsyncStorage.setItem(ONBOARDING_FLAG, "1");
