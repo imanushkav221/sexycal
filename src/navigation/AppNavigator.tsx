@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -122,75 +122,72 @@ function MainTabs() {
   );
 }
 
+type RouteDecision = "loading" | "Auth" | "Onboarding" | "Main";
+
 export default function AppNavigator() {
   const { session, loading: authLoading } = useAuth();
-  // useProfile still loads the profile data for the rest of the app
   const { onboardingComplete } = useProfile();
+  const [route, setRoute] = useState<RouteDecision>("loading");
+  const decided = useRef(false);
 
-  // Self-contained onboarding check — no race condition possible
-  const [checkDone, setCheckDone] = useState(false);
-  const [isOnboarded, setIsOnboarded] = useState(false);
-
-  // Run whenever session changes (null → logged in, or app opens with existing session)
+  // Once we decide "Main", never go back to onboarding (prevents glitching)
   useEffect(() => {
-    if (authLoading) return; // wait for auth to resolve first
+    if (onboardingComplete) {
+      AsyncStorage.setItem(ONBOARDING_FLAG, "1");
+      decided.current = true;
+      setRoute("Main");
+    }
+  }, [onboardingComplete]);
 
-    setCheckDone(false);
-    setIsOnboarded(false);
+  useEffect(() => {
+    if (authLoading) return;
 
+    // Already decided Main — don't re-check
+    if (decided.current) return;
+
+    if (!session) {
+      setRoute("Auth");
+      return;
+    }
+
+    // Check onboarding status
     (async () => {
       try {
-        // Step 1: Check AsyncStorage (instant, local)
+        // Step 1: AsyncStorage (instant, local)
         const flag = await AsyncStorage.getItem(ONBOARDING_FLAG);
         if (flag === "1") {
-          setIsOnboarded(true);
-          setCheckDone(true);
+          decided.current = true;
+          setRoute("Main");
           return;
         }
 
-        // Step 2: No session = show auth screen
-        if (!session) {
-          setCheckDone(true);
-          return;
-        }
-
-        // Step 3: Ensure Supabase client has the auth token, then query
-        // On fresh install the client might not have headers set yet
+        // Step 2: Query Supabase with authenticated client
         await supabase.auth.setSession({
           access_token: session.access_token,
           refresh_token: session.refresh_token,
         });
 
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from("profiles")
           .select("onboarding_complete")
           .eq("id", session.user.id)
           .single();
 
-        console.log("[AppNavigator] Supabase profile check:", { data, error: error?.message });
-
         if (data?.onboarding_complete === 1) {
           await AsyncStorage.setItem(ONBOARDING_FLAG, "1");
-          setIsOnboarded(true);
+          decided.current = true;
+          setRoute("Main");
+        } else {
+          setRoute("Onboarding");
         }
-      } catch (err) {
-        console.error("[AppNavigator] Onboarding check error:", err);
-      } finally {
-        setCheckDone(true);
+      } catch {
+        // If everything fails, show onboarding (safe fallback)
+        setRoute("Onboarding");
       }
     })();
   }, [session, authLoading]);
 
-  // Also sync the flag when useProfile eventually resolves
-  useEffect(() => {
-    if (onboardingComplete) {
-      AsyncStorage.setItem(ONBOARDING_FLAG, "1");
-      setIsOnboarded(true);
-    }
-  }, [onboardingComplete]);
-
-  // Spinner until auth AND onboarding check are both done
-  if (authLoading || !checkDone) {
+  if (route === "loading") {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F3F4F6" }}>
         <ActivityIndicator size="large" color="#2563EB" />
@@ -198,32 +195,21 @@ export default function AppNavigator() {
     );
   }
 
-  const initialRoute = !session
-    ? "Auth"
-    : isOnboarded
-    ? "Main"
-    : "OnboardingName";
-
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName={initialRoute}
+        initialRouteName={route === "Auth" ? "Auth" : route === "Main" ? "Main" : "OnboardingName"}
         screenOptions={{ headerShown: false }}
       >
-        {!session ? (
+        {route === "Auth" ? (
           <Stack.Screen name="Auth" component={AuthScreen} />
         ) : (
           <>
-            {!isOnboarded && (
-              <>
-                <Stack.Screen name="OnboardingName" component={OnboardingNameScreen} />
-                <Stack.Screen name="OnboardingBody" component={OnboardingBodyScreen} options={{ headerShown: false }} />
-                <Stack.Screen name="OnboardingActivity" component={OnboardingActivityScreen} options={{ headerShown: false }} />
-                <Stack.Screen name="OnboardingGoal" component={OnboardingGoalScreen} options={{ headerShown: false }} />
-                <Stack.Screen name="OnboardingDone" component={OnboardingDoneScreen} options={{ headerShown: false }} />
-              </>
-            )}
-
+            <Stack.Screen name="OnboardingName" component={OnboardingNameScreen} />
+            <Stack.Screen name="OnboardingBody" component={OnboardingBodyScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="OnboardingActivity" component={OnboardingActivityScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="OnboardingGoal" component={OnboardingGoalScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="OnboardingDone" component={OnboardingDoneScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Main" component={MainTabs} />
             <Stack.Screen name="FoodSearch" component={FoodSearchScreen} options={{ headerShown: true, title: "Search Food", presentation: "modal" }} />
             <Stack.Screen name="AddFood" component={AddFoodScreen} options={{ headerShown: true, title: "Add Food", presentation: "modal" }} />

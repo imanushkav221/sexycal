@@ -89,12 +89,14 @@ export default function EntertainmentReminderScreen() {
 
   const toggleEnabled = async (val: boolean) => {
     if (val) {
-      const notifGranted = await setupNotifications();
-      if (!notifGranted) {
-        Alert.alert("Permission Required", "Please enable notifications in device settings.");
-        return;
-      }
-      if (!hasPermission) {
+      // Request notification permission (don't block if denied — service still works)
+      setupNotifications().catch(() => {});
+
+      // Re-check usage permission right now
+      const currentPerm = hasUsagePermission();
+      setHasPermission(currentPerm);
+
+      if (!currentPerm) {
         Alert.alert(
           "Usage Access Required",
           'SexyCAL needs Usage Access to detect when you open Netflix, YouTube, etc.\n\nTap "Open Settings", find SexyCAL in the list, and turn it on.',
