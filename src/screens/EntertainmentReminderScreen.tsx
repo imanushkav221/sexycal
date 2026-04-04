@@ -9,9 +9,10 @@ import {
   Alert,
   AppState,
   Linking,
+  Platform,
+  NativeModules,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as IntentLauncher from "expo-intent-launcher";
 import { setupNotifications } from "@/lib/notifications";
 import {
   ENTERTAINMENT_APPS,
@@ -26,29 +27,40 @@ import {
 } from "app-detector";
 import { DEFAULT_MEAL_WINDOWS } from "@/utils/mealTime";
 
-/** Open Android's Usage Access settings page reliably */
+/** Open Android's Usage Access settings — tries multiple approaches */
 async function openUsageAccessSettings() {
+  const errors: string[] = [];
+
+  // Approach 1: expo-intent-launcher (dynamic import to avoid crash if missing)
   try {
-    // Use raw string — most reliable across expo-intent-launcher versions
-    await IntentLauncher.startActivityAsync(
-      "android.settings.USAGE_ACCESS_SETTINGS"
-    );
-  } catch (e1) {
-    try {
-      // Fallback: React Native Linking intent
-      await Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS");
-    } catch (e2) {
-      try {
-        // Last resort: general app settings
-        await Linking.openSettings();
-      } catch (e3) {
-        Alert.alert(
-          "Cannot Open Settings",
-          "Please go to Settings > Apps > Special access > Usage access manually and enable SexyCAL."
-        );
-      }
-    }
+    const IL = require("expo-intent-launcher");
+    await IL.startActivityAsync("android.settings.USAGE_ACCESS_SETTINGS");
+    return; // success
+  } catch (e: any) {
+    errors.push(`IntentLauncher: ${e?.message || e}`);
   }
+
+  // Approach 2: Linking.sendIntent (Android-only RN API)
+  try {
+    await Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS");
+    return; // success
+  } catch (e: any) {
+    errors.push(`sendIntent: ${e?.message || e}`);
+  }
+
+  // Approach 3: General app settings
+  try {
+    await Linking.openSettings();
+    return; // success
+  } catch (e: any) {
+    errors.push(`openSettings: ${e?.message || e}`);
+  }
+
+  // All failed — show manual instructions
+  Alert.alert(
+    "Open Settings Manually",
+    "Go to: Settings > Apps > Special app access > Usage access\n\nFind SexyCAL and turn it ON.\n\n(Debug: " + errors.join("; ") + ")"
+  );
 }
 
 export default function EntertainmentReminderScreen() {
@@ -69,7 +81,6 @@ export default function EntertainmentReminderScreen() {
     getEntertainmentSettings().then(setSettings);
     refreshPermission();
 
-    // Re-check permission when user returns from Settings
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") refreshPermission();
     });
@@ -86,10 +97,13 @@ export default function EntertainmentReminderScreen() {
       if (!hasPermission) {
         Alert.alert(
           "Usage Access Required",
-          'To detect which app you\'re using, tap "Open Settings", find SexyCAL in the list, and turn it on.',
+          'SexyCAL needs Usage Access to detect when you open Netflix, YouTube, etc.\n\nTap "Open Settings", find SexyCAL in the list, and turn it on.',
           [
             { text: "Cancel", style: "cancel" },
-            { text: "Open Settings", onPress: openUsageAccessSettings },
+            {
+              text: "Open Settings",
+              onPress: () => openUsageAccessSettings(),
+            },
           ]
         );
         return;
@@ -110,7 +124,6 @@ export default function EntertainmentReminderScreen() {
     const updated = { ...settings, selectedApps: selected };
     setSettings(updated);
     await saveEntertainmentSettings(updated);
-    // Update watching list if active
     if (settings.enabled && hasPermission) {
       startWatching(selected, DEFAULT_MEAL_WINDOWS);
     }
@@ -129,7 +142,7 @@ export default function EntertainmentReminderScreen() {
       const appNames = ENTERTAINMENT_APPS
         .filter((a) => settings.selectedApps.includes(a.id))
         .map((a) => a.name);
-      await sendMealReminder("lunch", appNames[0]);
+      await sendMealReminder("lunch", appNames[0] || "YouTube");
     } catch {
       Alert.alert("Error", "Failed to send test notification.");
     } finally {
@@ -142,16 +155,23 @@ export default function EntertainmentReminderScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Smart Reminders</Text>
         <Text style={styles.subtitle}>
-          Get nudged to log your food whenever you open Netflix, YouTube, etc. during meal times — no need to open SexyCAL first.
+          Get nudged to log food when you open entertainment apps during meal times. Works in the background automatically.
         </Text>
 
-        {/* Permission banner */}
+        {/* Permission banner — big and tappable */}
         {!hasPermission && (
-          <TouchableOpacity style={styles.permBanner} onPress={openUsageAccessSettings}>
-            <Text style={styles.permBannerTitle}>⚠️ Usage Access Required</Text>
+          <TouchableOpacity
+            style={styles.permBanner}
+            onPress={() => openUsageAccessSettings()}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.permBannerTitle}>Step 1: Grant Usage Access</Text>
             <Text style={styles.permBannerDesc}>
-              Tap here → find SexyCAL → turn it on. Required to detect when you open Netflix, YouTube, etc.
+              Tap here to open Settings. Find SexyCAL in the list and turn it ON. This lets the app detect when you open Netflix, YouTube, etc.
             </Text>
+            <View style={styles.permBannerBtn}>
+              <Text style={styles.permBannerBtnText}>Open Settings →</Text>
+            </View>
           </TouchableOpacity>
         )}
 
@@ -165,9 +185,11 @@ export default function EntertainmentReminderScreen() {
         <View style={styles.card}>
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.toggleLabel}>Enable Smart Reminders</Text>
+              <Text style={styles.toggleLabel}>
+                {hasPermission ? "Step 2: Enable Reminders" : "Enable Smart Reminders"}
+              </Text>
               <Text style={styles.toggleDesc}>
-                Detects when you open entertainment apps during meal time
+                Detects entertainment apps during meal time and sends a reminder
               </Text>
             </View>
             <Switch
@@ -181,16 +203,10 @@ export default function EntertainmentReminderScreen() {
 
         {/* Apps */}
         <Text style={styles.sectionTitle}>Watch These Apps</Text>
-        <Text style={styles.sectionDesc}>
-          Get nudged when you switch to any of these during a meal window.
-        </Text>
         <View style={styles.card}>
           {ENTERTAINMENT_APPS.map((app, i) => (
             <React.Fragment key={app.id}>
-              <TouchableOpacity
-                style={styles.appRow}
-                onPress={() => toggleApp(app.id)}
-              >
+              <TouchableOpacity style={styles.appRow} onPress={() => toggleApp(app.id)}>
                 <Text style={styles.appIcon}>{app.icon}</Text>
                 <Text style={styles.appName}>{app.name}</Text>
                 <View style={[styles.checkbox, settings.selectedApps.includes(app.id) && styles.checkboxActive]}>
@@ -204,7 +220,6 @@ export default function EntertainmentReminderScreen() {
 
         {/* Meal Windows */}
         <Text style={styles.sectionTitle}>Active Meal Windows</Text>
-        <Text style={styles.sectionDesc}>Reminders only fire during these hours.</Text>
         <View style={styles.card}>
           {DEFAULT_MEAL_WINDOWS.map((w, i) => (
             <React.Fragment key={w.mealType}>
@@ -243,12 +258,6 @@ export default function EntertainmentReminderScreen() {
         >
           <Text style={styles.testBtnText}>{saving ? "Sending..." : "Send Test Notification"}</Text>
         </TouchableOpacity>
-
-        <View style={styles.infoBox}>
-          <Text style={styles.infoText}>
-            💡 One-time setup: grant permission above, pick your apps, enable reminders. After that, the service runs automatically in the background — even after phone restart. Just open Netflix and you'll get nudged to log your food.
-          </Text>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -260,11 +269,16 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: "700", color: "#111827", marginBottom: 4 },
   subtitle: { fontSize: 14, color: "#6B7280", marginBottom: 16, lineHeight: 20 },
   permBanner: {
-    backgroundColor: "#FEF3C7", borderRadius: 12, padding: 14,
+    backgroundColor: "#FEF3C7", borderRadius: 12, padding: 16,
     marginBottom: 12, borderWidth: 1, borderColor: "#FDE68A",
   },
-  permBannerTitle: { fontSize: 14, fontWeight: "700", color: "#92400E", marginBottom: 4 },
-  permBannerDesc: { fontSize: 13, color: "#92400E", lineHeight: 18 },
+  permBannerTitle: { fontSize: 16, fontWeight: "700", color: "#92400E", marginBottom: 6 },
+  permBannerDesc: { fontSize: 13, color: "#92400E", lineHeight: 18, marginBottom: 10 },
+  permBannerBtn: {
+    backgroundColor: "#F59E0B", borderRadius: 8, paddingVertical: 10,
+    paddingHorizontal: 16, alignSelf: "flex-start",
+  },
+  permBannerBtnText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
   permOk: {
     backgroundColor: "#F0FDF4", borderRadius: 12, padding: 12,
     marginBottom: 12, borderWidth: 1, borderColor: "#BBF7D0",
@@ -274,7 +288,6 @@ const styles = StyleSheet.create({
     fontSize: 13, fontWeight: "600", color: "#6B7280",
     textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8, marginTop: 16,
   },
-  sectionDesc: { fontSize: 13, color: "#9CA3AF", marginBottom: 8, lineHeight: 18 },
   card: {
     backgroundColor: "#FFFFFF", borderRadius: 14, paddingHorizontal: 14,
     shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
@@ -301,9 +314,4 @@ const styles = StyleSheet.create({
     alignItems: "center", marginTop: 20, borderWidth: 1, borderColor: "#BFDBFE",
   },
   testBtnText: { color: "#2563EB", fontSize: 15, fontWeight: "600" },
-  infoBox: {
-    backgroundColor: "#FFFBEB", borderRadius: 12, padding: 14,
-    marginTop: 16, borderWidth: 1, borderColor: "#FDE68A",
-  },
-  infoText: { fontSize: 13, color: "#92400E", lineHeight: 18 },
 });
