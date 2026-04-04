@@ -7,7 +7,7 @@ const ANDROID_PACKAGE = "com.sexycal.app";
 export default (): ExpoConfig => ({
   name: "SexyCAL",
   slug: APP_SLUG,
-  version: "1.0.0",
+  version: "1.0.2",
   orientation: "portrait",
   scheme: "sexycal",
   userInterfaceStyle: "automatic",
