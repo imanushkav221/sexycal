@@ -27,17 +27,28 @@ import {
 import { DEFAULT_MEAL_WINDOWS } from "@/utils/mealTime";
 
 /** Open Android's Usage Access settings page reliably */
-function openUsageAccessSettings() {
-  // Try expo-intent-launcher first (most reliable)
-  IntentLauncher.startActivityAsync(
-    IntentLauncher.ActivityAction.USAGE_ACCESS_SETTINGS
-  ).catch(() => {
-    // Fallback: React Native Linking intent
-    Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS").catch(() => {
-      // Last resort: general app settings
-      Linking.openSettings();
-    });
-  });
+async function openUsageAccessSettings() {
+  try {
+    // Use raw string — most reliable across expo-intent-launcher versions
+    await IntentLauncher.startActivityAsync(
+      "android.settings.USAGE_ACCESS_SETTINGS"
+    );
+  } catch (e1) {
+    try {
+      // Fallback: React Native Linking intent
+      await Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS");
+    } catch (e2) {
+      try {
+        // Last resort: general app settings
+        await Linking.openSettings();
+      } catch (e3) {
+        Alert.alert(
+          "Cannot Open Settings",
+          "Please go to Settings > Apps > Special access > Usage access manually and enable SexyCAL."
+        );
+      }
+    }
+  }
 }
 
 export default function EntertainmentReminderScreen() {

@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Text } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 
@@ -119,11 +120,31 @@ function MainTabs() {
   );
 }
 
+const ONBOARDING_FLAG = "@sexycal_onboarding_complete";
+
 export default function AppNavigator() {
   const { session, loading: authLoading } = useAuth();
   const { onboardingComplete, loading: profileLoading } = useProfile();
 
-  if (authLoading || (session && profileLoading)) {
+  // Direct AsyncStorage check — fast, local, no race condition
+  const [asyncFlag, setAsyncFlag] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(ONBOARDING_FLAG).then((val) => {
+      setAsyncFlag(val === "1");
+    });
+  }, []);
+
+  // Re-check when profile says onboarding is complete (sets the flag for future)
+  useEffect(() => {
+    if (onboardingComplete) {
+      AsyncStorage.setItem(ONBOARDING_FLAG, "1");
+      setAsyncFlag(true);
+    }
+  }, [onboardingComplete]);
+
+  // Show spinner until we know auth state AND have checked AsyncStorage
+  if (authLoading || asyncFlag === null) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F3F4F6" }}>
         <ActivityIndicator size="large" color="#2563EB" />
@@ -131,12 +152,24 @@ export default function AppNavigator() {
     );
   }
 
-  // Determine initial route based on auth & onboarding status
+  // If we have a session but AsyncStorage says NOT onboarded,
+  // wait for the profile fetch (Supabase) to confirm before showing onboarding
+  if (session && !asyncFlag && profileLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F3F4F6" }}>
+        <ActivityIndicator size="large" color="#2563EB" />
+      </View>
+    );
+  }
+
+  // Onboarding is done if EITHER AsyncStorage OR profile says so
+  const isOnboarded = asyncFlag || onboardingComplete;
+
   const initialRoute = !session
     ? "Auth"
-    : !onboardingComplete
-    ? "OnboardingName"
-    : "Main";
+    : isOnboarded
+    ? "Main"
+    : "OnboardingName";
 
   return (
     <NavigationContainer>
@@ -148,83 +181,48 @@ export default function AppNavigator() {
           <Stack.Screen name="Auth" component={AuthScreen} />
         ) : (
           <>
-            {/* Onboarding screens */}
-            <Stack.Screen name="OnboardingName" component={OnboardingNameScreen} />
-            <Stack.Screen
-              name="OnboardingBody"
-              component={OnboardingBodyScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="OnboardingActivity"
-              component={OnboardingActivityScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="OnboardingGoal"
-              component={OnboardingGoalScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="OnboardingDone"
-              component={OnboardingDoneScreen}
-              options={{ headerShown: false }}
-            />
+            {/* Onboarding screens — only registered if not yet onboarded */}
+            {!isOnboarded && (
+              <>
+                <Stack.Screen name="OnboardingName" component={OnboardingNameScreen} />
+                <Stack.Screen name="OnboardingBody" component={OnboardingBodyScreen} options={{ headerShown: false }} />
+                <Stack.Screen name="OnboardingActivity" component={OnboardingActivityScreen} options={{ headerShown: false }} />
+                <Stack.Screen name="OnboardingGoal" component={OnboardingGoalScreen} options={{ headerShown: false }} />
+                <Stack.Screen name="OnboardingDone" component={OnboardingDoneScreen} options={{ headerShown: false }} />
+              </>
+            )}
 
             {/* Main app */}
             <Stack.Screen name="Main" component={MainTabs} />
             <Stack.Screen
               name="FoodSearch"
               component={FoodSearchScreen}
-              options={{
-                headerShown: true,
-                title: "Search Food",
-                presentation: "modal",
-              }}
+              options={{ headerShown: true, title: "Search Food", presentation: "modal" }}
             />
             <Stack.Screen
               name="AddFood"
               component={AddFoodScreen}
-              options={{
-                headerShown: true,
-                title: "Add Food",
-                presentation: "modal",
-              }}
+              options={{ headerShown: true, title: "Add Food", presentation: "modal" }}
             />
             <Stack.Screen
               name="LogMeal"
               component={LogMealScreen}
-              options={{
-                headerShown: true,
-                title: "Log Meal",
-                presentation: "modal",
-              }}
+              options={{ headerShown: true, title: "Log Meal", presentation: "modal" }}
             />
             <Stack.Screen
               name="WeightLog"
               component={WeightLogScreen}
-              options={{
-                headerShown: true,
-                title: "Weight Log",
-                presentation: "modal",
-              }}
+              options={{ headerShown: true, title: "Weight Log", presentation: "modal" }}
             />
             <Stack.Screen
               name="EntertainmentReminder"
               component={EntertainmentReminderScreen}
-              options={{
-                headerShown: true,
-                title: "Smart Reminders",
-                presentation: "modal",
-              }}
+              options={{ headerShown: true, title: "Smart Reminders", presentation: "modal" }}
             />
             <Stack.Screen
               name="FoodPhoto"
               component={FoodPhotoScreen}
-              options={{
-                headerShown: false,
-                presentation: "fullScreenModal",
-              }}
+              options={{ headerShown: false, presentation: "fullScreenModal" }}
             />
           </>
         )}
