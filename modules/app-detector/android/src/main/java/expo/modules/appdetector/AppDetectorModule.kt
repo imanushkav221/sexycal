@@ -49,7 +49,16 @@ class AppDetectorModule : Module() {
                 putStringArrayListExtra("targetPackages", ArrayList(targetPackages))
                 putStringArrayListExtra("mealWindows", ArrayList(mealWindowStrings))
             }
-            context.startService(intent)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                // Fallback: try regular startService
+                try { context.startService(intent) } catch (_: Exception) {}
+            }
             return@Function null
         }
 

@@ -36,8 +36,16 @@ class AppDetectorService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannels()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForeground(FOREGROUND_ID, buildForegroundNotif())
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(FOREGROUND_ID, buildForegroundNotif(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForeground(FOREGROUND_ID, buildForegroundNotif())
+            }
+        } catch (e: Exception) {
+            // If startForeground fails, stop gracefully instead of crashing the app
+            try { stopSelf() } catch (_: Exception) {}
         }
     }
 

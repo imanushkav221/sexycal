@@ -15,6 +15,7 @@ function withAppDetector(config) {
         $: {
           "android:name": "expo.modules.appdetector.AppDetectorService",
           "android:exported": "false",
+          "android:foregroundServiceType": "specialUse",
         },
       });
     }
@@ -50,6 +51,7 @@ function withAppDetector(config) {
     };
 
     addPermission("android.permission.FOREGROUND_SERVICE");
+    addPermission("android.permission.FOREGROUND_SERVICE_SPECIAL_USE");
     addPermission("android.permission.RECEIVE_BOOT_COMPLETED");
     addPermission("android.permission.PACKAGE_USAGE_STATS");
 
