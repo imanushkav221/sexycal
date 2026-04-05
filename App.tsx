@@ -12,8 +12,12 @@ import { seedIndianFoods } from "@/db/seedIndianFoods";
 import { setupNotifications, scheduleDailySummary } from "@/lib/notifications";
 import { initEntertainmentReminder, getEntertainmentSettings, cancelRemindersForLoggedMeals } from "@/lib/entertainmentReminder";
 import { supabase } from "@/lib/supabase";
+import { initSentry } from "@/lib/sentry";
 
-export default function App() {
+// Initialize Sentry as early as possible
+initSentry();
+
+function App() {
   const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
@@ -70,6 +74,8 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+export default App;
 
 const styles = StyleSheet.create({
   loadingContainer: {

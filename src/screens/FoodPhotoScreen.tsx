@@ -16,6 +16,7 @@ import { File, Paths } from "expo-file-system/next";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/AppNavigator";
+import { captureError } from "@/lib/sentry";
 import { suggestMealType } from "@/utils/mealTime";
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -52,7 +53,7 @@ export default function FoodPhotoScreen() {
         analyzePhoto(photo.uri);
       }
     } catch (err) {
-      console.error("[FoodPhoto] Camera error:", err);
+      captureError(err, { tags: { screen: "FoodPhoto", action: "camera" } });
       Alert.alert("Error", "Failed to take photo.");
     }
   };
@@ -107,7 +108,7 @@ export default function FoodPhotoScreen() {
         );
       }
     } catch (err) {
-      console.error("[FoodPhoto] Analysis error:", err);
+      captureError(err, { tags: { screen: "FoodPhoto", action: "analyze" } });
       Alert.alert(
         "Analysis Failed",
         "Could not analyze the photo. Make sure you have internet connection and try again."

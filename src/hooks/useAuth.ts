@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { setSentryUser, clearSentryUser, captureError } from "@/lib/sentry";
 
 export interface AuthState {
   session: Session | null;
@@ -36,6 +37,12 @@ export function useAuth(): AuthState & AuthActions {
         setSession(newSession);
         setUser(newSession?.user ?? null);
         setLoading(false);
+        // Track user in Sentry
+        if (newSession?.user) {
+          setSentryUser(newSession.user.id, newSession.user.email ?? undefined);
+        } else {
+          clearSentryUser();
+        }
       }
     );
 

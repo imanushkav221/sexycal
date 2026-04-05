@@ -1,6 +1,7 @@
 import { getDb } from "./migrate";
 import { generateId } from "@/utils/uuid";
 import { supabase } from "@/lib/supabase";
+import { captureError } from "@/lib/sentry";
 
 export interface Profile {
   id: string;
@@ -96,15 +97,17 @@ async function syncProfileToSupabase(profile: Profile): Promise<void> {
     const { synced_at, id: _localId, user_id, ...rest } = profile;
     const payload = { id: user_id, ...rest };
     const { error } = await supabase.from('profiles').upsert(payload);
-    if (!error) {
+    if (error) {
+      captureError(error, { tags: { module: "profiles", action: "sync" }, extra: { userId: user_id, errorCode: error.code } });
+    } else {
       const db = await getDb();
       await db.runAsync(
         "UPDATE profiles SET synced_at = ? WHERE id = ?",
         [new Date().toISOString(), profile.id]
       );
     }
-  } catch {
-    // Sync failure is non-fatal; will retry on next sync
+  } catch (err) {
+    captureError(err, { tags: { module: "profiles", action: "sync" } });
   }
 }
 

@@ -1,5 +1,6 @@
 import NetInfo from "@react-native-community/netinfo";
 import { supabase } from "@/lib/supabase";
+import { captureError } from "@/lib/sentry";
 import { getDb } from "@/db/migrate";
 import { upsertFoodFromRemote } from "@/db/foods";
 import { upsertMealFromRemote } from "@/db/meals";
@@ -124,7 +125,7 @@ async function flushOutbox(): Promise<void> {
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error(`[SyncWorker] ❌ Failed ${item.entity_type} ${item.entity_id}:`, errorMessage);
+      captureError(err, { tags: { module: "sync" }, extra: { entityType: item.entity_type, entityId: item.entity_id } });
       await db.runAsync(
         `UPDATE outbox SET status = 'pending', last_error = ? WHERE id = ?`,
         [errorMessage, item.id]

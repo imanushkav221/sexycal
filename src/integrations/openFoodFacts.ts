@@ -1,4 +1,5 @@
 import { mapOffNutriments } from "@/utils/nutrients";
+import { captureError } from "@/lib/sentry";
 import type { Macros } from "@/utils/nutrients";
 
 const OFF_WORLD_BASE_URL = "https://world.openfoodfacts.org/api/v0";
@@ -133,7 +134,7 @@ export async function fetchProductByBarcode(
         source: "openfoodfacts",
       };
     } catch (error) {
-      console.error(`[OpenFoodFacts] Error fetching barcode from ${baseUrl}:`, error);
+      captureError(error, { tags: { module: "openfoodfacts" }, extra: { barcode, baseUrl } });
     }
   }
 
@@ -186,7 +187,7 @@ export async function searchProducts(
 
     return merged.slice(0, pageSize);
   } catch (error) {
-    console.error("[OpenFoodFacts] Error searching products:", error);
+    captureError(error, { tags: { module: "openfoodfacts" }, extra: { query } });
     return [];
   }
 }

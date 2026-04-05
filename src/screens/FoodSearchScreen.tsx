@@ -17,6 +17,7 @@ import type { NativeStackNavigationProp, RouteProp } from "@react-navigation/nat
 import { searchFoods, createFood } from "@/db/foods";
 import { searchProducts } from "@/integrations/openFoodFacts";
 import { searchUSDAFoods } from "@/integrations/usdaProxy";
+import { captureError, addBreadcrumb } from "@/lib/sentry";
 import { useAuth } from "@/hooks/useAuth";
 import FoodItem from "@/components/FoodItem";
 import type { RootStackParamList } from "@/navigation/AppNavigator";
@@ -191,7 +192,7 @@ export default function FoodSearchScreen() {
 
         setSearchedOnline(true);
       } catch (err) {
-        console.error("[FoodSearch] Error:", err);
+        captureError(err, { tags: { screen: "FoodSearch" }, extra: { query: q, filter } });
       } finally {
         setLoading(false);
       }
@@ -243,7 +244,7 @@ export default function FoodSearchScreen() {
           );
           foodId = saved.id;
         } catch (err) {
-          console.error("[FoodSearch] Failed to save food:", err);
+          captureError(err, { tags: { screen: "FoodSearch", action: "saveFood" }, extra: { foodId: food.id, foodName: food.name } });
         }
       }
 

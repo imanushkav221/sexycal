@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { captureError } from "@/lib/sentry";
 import type { Macros } from "@/utils/nutrients";
 
 export interface USDAFoodItem {
@@ -27,7 +28,10 @@ export interface FoodSearchResult {
 }
 
 const NUTRIENT_IDS = {
-  CALORIES: 1008,
+  CALORIES: 1008,        // Energy (standard)
+  CALORIES_GENERAL: 2047, // Energy (Atwater General Factors) — Foundation foods
+  CALORIES_SPECIFIC: 2048, // Energy (Atwater Specific Factors) — Foundation foods
+  CALORIES_KJ: 1062,     // Energy in kJ (some foods only have this)
   PROTEIN: 1003,
   FAT: 1004,
   CARBS: 1005,
@@ -39,8 +43,17 @@ function extractMacros(nutrients: USDANutrient[]): Macros {
     return nutrient?.value ?? 0;
   };
 
+  // Try standard Energy first, then Atwater General, then Atwater Specific, then kJ conversion
+  let calories = getNutrientValue(NUTRIENT_IDS.CALORIES);
+  if (calories === 0) calories = getNutrientValue(NUTRIENT_IDS.CALORIES_GENERAL);
+  if (calories === 0) calories = getNutrientValue(NUTRIENT_IDS.CALORIES_SPECIFIC);
+  if (calories === 0) {
+    const kj = getNutrientValue(NUTRIENT_IDS.CALORIES_KJ);
+    if (kj > 0) calories = Math.round(kj / 4.184);
+  }
+
   return {
-    calories_kcal: getNutrientValue(NUTRIENT_IDS.CALORIES),
+    calories_kcal: calories,
     protein_g: getNutrientValue(NUTRIENT_IDS.PROTEIN),
     fat_g: getNutrientValue(NUTRIENT_IDS.FAT),
     carbs_g: getNutrientValue(NUTRIENT_IDS.CARBS),
@@ -68,7 +81,7 @@ export async function searchUSDAFoods(
     });
 
     if (error) {
-      console.error("[USDAProxy] Edge function error:", error);
+      captureError(error, { tags: { module: "usda-proxy" }, extra: { query } });
       return [];
     }
 
@@ -83,7 +96,7 @@ export async function searchUSDAFoods(
       source: "usda" as const,
     }));
   } catch (error) {
-    console.error("[USDAProxy] Search error:", error);
+    captureError(error, { tags: { module: "usda-proxy" }, extra: { query } });
     return [];
   }
 }
